@@ -55,7 +55,7 @@ jobs:
           gh release view xanoise-latest >/dev/null 2>&1 || gh release create xanoise-latest --prerelease --target "$GITHUB_SHA" \
             --title "XANOISE (latest build of the xanoise branch)" \
             --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with JIANT's web installer (Use a local file) or tools/fm1_install.py."
-          gh release upload xanoise-latest xanoise.fwsc --clobber
+          gh release upload xanoise-latest xanoise.fwsc size_map.txt --clobber
       - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
         run: |
           pip install numpy

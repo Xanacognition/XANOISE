@@ -290,7 +290,11 @@ static void fm1_main(void)
         fm1_irq_on();
     }
 #endif
+#if XN_WB
+    wb_init();                                /* (XANOISE) Wonderblue's song (its autosave), its sounds on JIANT's tracks */
+#else
     autosave_boot(boot_clean);                /* (1.2) the last session's music, under the splash */
+#endif
     session_dice(fm1_ticks() ^ (uint32_t)fm1_adc_read(FM1_ADC_BATT) << 16);   /* (JIANT 0.4) this session's macros */
     {                                         /* the splash, its signature written (JIANT 0.5: was 400 ms); the pot
                                                * followed (MIDI IN plays under it). (0.5.2) On the clock: drawing the
@@ -391,6 +395,12 @@ static void fm1_main(void)
         felucca_dbg.page = ui.page;
         felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
+#if XN_WB
+        wb_frame();                                   /* (XANOISE) Wonderblue's panel, screen, LEDs, store; its sounds */
+        settings_poll();
+        felucca_dbg.stage = 9;
+        while (fm1_ms - m < 4u) {}                    /* (its own frame rate: 30 a second, app_step) */
+#else
         ui_input();
         settings_poll();                              /* queued settings save: only while stopped */
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
@@ -406,6 +416,7 @@ static void fm1_main(void)
             ed_service();                       /* editor replies without waiting for the next frame */
 #endif
         }
+#endif
     }
 }
 

@@ -1135,18 +1135,22 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
-/* (XANOISE) the tracker over JIANT (xn_tracker.c): on, it draws the screen and takes the panel; the black keys are its own */
-#ifndef XN_BOOT_ON
-#define XN_BOOT_ON 1                                    /* (XANOISE) the tracker at boot (the host tests: 0, JIANT's screens) */
+/* (XANOISE) XN_WB: Wonderblue-OS's front end over JIANT's sound (xn_wb.c): the keys are its own, its sequencer runs
+ * at each block's end (events_block). 0: JIANT's own front end (the host tests of JIANT's) */
+#ifndef XN_WB
+#define XN_WB 0
 #endif
-static volatile uint8_t xn_on = XN_BOOT_ON;
-static int xn_frame(uint32_t pressed, uint32_t notes);
-static void xn_draw(void);
-static void xn_leds(void);
+#if XN_WB
+static void wb_isr(uint32_t n);
+#endif
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
     uint32_t lay, fx;
+    if (XN_WB) {                                  /* (XANOISE) the keys are Wonderblue's (xn_wb.c) */
+        kb_prev = cur;
+        return;
+    }
     keys_strum(CTL);                              /* (0.6.81) the chords' strums */
     ch = cur ^ kb_prev;                           /* keys also sound while entering steps */
     if (!ch)
@@ -1166,10 +1170,6 @@ static void keyboard_block(void)
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
-                kb_note[k] = KB_SILENT;
-                continue;
-            }
-            if (xn_on && key_black(k) && !lay) {  /* (XANOISE) the tracker: black keys pick tracks and F1..F4 */
                 kb_note[k] = KB_SILENT;
                 continue;
             }
@@ -2452,6 +2452,9 @@ static void events_block(uint32_t n)
     }
     if (song.playing)
         song.tick++;
+#if XN_WB
+    wb_isr(n);                                      /* (XANOISE) Wonderblue's sequencer (xn_wb.c) */
+#endif
 }
 
 #include "song_play.c"                           /* the song: the ISR's part (song_chain.c) */

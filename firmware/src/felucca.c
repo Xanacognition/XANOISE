@@ -35,6 +35,7 @@
 #define FELUCCA_HOTRAM 1         /* (JIANT 0.6.78, experimental) core 0's hottest audio code in RAM (core.h) */
 #endif
 #ifndef FELUCCA_ID
+#define XN_WB 1                  /* (XANOISE) Wonderblue-OS's front end over JIANT's sound (xn_wb.c); 0: JIANT's own */
 #define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
@@ -93,7 +94,6 @@
 #include "ui_menu.c"
 #include "ui_input.c"
 #include "ui_layer.c"              /* the quick layers (FX GLO SCL EDIT REC held; SEQ TOOLS: ui_tools.c) */
-#include "xn_tracker.c"               /* (XANOISE) the Wonderblue tracker over JIANT */
 
 /* --------------------------------------------- storage, update, editor --- */
 #if FELUCCA_FLASH
@@ -116,4 +116,7 @@
 #include "console.c"
 #endif
 #include "master.c"              /* the MASTER pot (#137: read before the audio starts) */
+#if XN_WB
+#include "xn_wb.c"               /* (XANOISE) Wonderblue-OS over JIANT */
+#endif
 #include "main.c"
