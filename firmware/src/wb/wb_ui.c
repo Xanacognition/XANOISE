@@ -12,12 +12,14 @@
  *   PLAY, REC, HOME + PLAY: SIT      OCT- / OCT+  the pads' octave
  * The store: sixteen slots of 16 KiB from STORE_LO, slot 0 the autosave. */
 
-enum { PG_SNG, PG_TRK, PG_SND, PG_CHD, PG_GEN, PG_MIX, PG_MST, PG_ARR, PG_N };
-static const char *const PG_NAME[PG_N] = {"SNG", "TRK", "SND", "CHD", "GEN", "MIX", "MST", "ARR"};
-static const char *const PG_HINT[PG_N] = {"K2 GENRE, BLINKING KEY", "SELECT ROW, PLAY PADS", "SHAPE THE SOUND",
-                                          "WHITE KEYS: CHORDS", "CHANCE, MUTATION, DRIFT", "LEVEL, PAN, SENDS",
-                                          "TEMPO, SWING, METER", "WHITE KEY: GO TO PART"};
-static const uint8_t PG_BTN[PG_N] = {BTN_SAVE, BTN_HOME, BTN_EDIT, BTN_SEL, BTN_LFO, BTN_ENV, BTN_GLO, BTN_SEQ};
+/* (XANOISE) the tabs in the panel's order: HOME, SAVE, SCL, then ENV (MIX) left of LFO (GEN) as on the FM-1, SEQ, EDIT,
+ * GLO; renamed for what they hold (WND-1: TRK SNG CHD MIX GEN ARR SND MST) */
+enum { PG_TRK, PG_SNG, PG_CHD, PG_MIX, PG_GEN, PG_ARR, PG_SND, PG_MST, PG_N };
+static const char *const PG_NAME[PG_N] = {"HOM", "SAV", "CHD", "MIX", "GEN", "SEQ", "EDT", "MST"};
+static const char *const PG_HINT[PG_N] = {"SELECT ROW, PLAY PADS", "K2 GENRE, SAVE AGAIN: SAVE", "WHITE KEYS: CHORDS",
+                                          "LEVEL, PAN, SENDS", "CHANCE, MUTATION, DRIFT", "WHITE KEY: GO TO PART",
+                                          "EDIT THE SOUND", "TEMPO, SWING, METER"};
+static const uint8_t PG_BTN[PG_N] = {BTN_HOME, BTN_SAVE, BTN_SEL, BTN_ENV, BTN_LFO, BTN_SEQ, BTN_EDIT, BTN_GLO};
 static const char *const SECT_NAME[NPAT] = {"MAIN", "VARY", "DOWN", "BUILD", "GROOVE", "HALF", "CHOP", "OUTRO"};
 
 /* ---- the colours: Renoise's dark warm greys, orange for what plays, blue for what is picked, cyan for the chords */
@@ -34,8 +36,9 @@ static const char *const SECT_NAME[NPAT] = {"MAIN", "VARY", "DOWN", "BUILD", "GR
 #define C_BLUE RGB(52, 116, 232)
 #define C_CYAN RGB(52, 214, 204)
 #define C_REDC RGB(232, 82, 66)
-static const uint16_t TRK_COL[NT] = {RGB(238, 142, 42), RGB(52, 116, 232), RGB(96, 156, 244), RGB(52, 214, 204),
-                                     RGB(228, 192, 122), RGB(214, 214, 214)};
+/* (XANOISE) the drums one orange (BRK KIK PER), the bass green, the keys and the synth one blue */
+static const uint16_t TRK_COL[NT] = {RGB(238, 142, 42), RGB(238, 142, 42), RGB(238, 142, 42), RGB(52, 214, 204),
+                                     RGB(84, 146, 244), RGB(84, 146, 244)};
 static const uint16_t KNOB_C[4] = {RGB(240, 92, 80), RGB(244, 196, 64), RGB(96, 214, 120), RGB(84, 152, 244)};
 
 /* ---- the keys: white and black, in order */
@@ -69,8 +72,9 @@ static uint8_t fx_latch, arp_latch, perf_solo, seq_used;
 static uint32_t page_ms;                        /* when the page opened (its F keys blink a moment) */
 static uint32_t fx_rel_ms, arp_rel_ms, seq_down_ms;
 #define LATCH_MS 400u
-static int fx_on(void) { return fx_latch || ((fm1_in.buttons >> BTN_FX) & 1u); }
-static int arp_on(void) { return arp_latch || ((fm1_in.buttons >> BTN_ARP) & 1u); }
+#define ARM_MS 8000u                            /* (XANOISE: a question waits 8 s, was 3) */
+static int fx_on(void) { return fx_latch; }       /* (XANOISE: FX and ARP a tap on, a tap off; WND-1: held, or latched) */
+static int arp_on(void) { return arp_latch; }
 
 static void toast(const char *s)
 {
@@ -677,7 +681,7 @@ static void fn_press(uint32_t i)
         }
         break;
     case PG_SNG:
-        if (arm_f != i || fm1_ms - arm_ms > 3000u) {
+        if (arm_f != i || fm1_ms - arm_ms > ARM_MS) {
             if (i == 0u && !slot_ok[slot_sel]) goto do_it;   /* (an empty slot: no question) */
             arm_f = (uint8_t)i;
             arm_ms = fm1_ms;
@@ -911,7 +915,7 @@ static void arr_fn(uint32_t i)
         if (sq_chainpos >= song.nchain) sq_chainpos = 0;
         if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
         toast("PART DELETED");
-    } else if (i == 2u) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE ARRANGEMENT"); }
+    } else if (i == 2u) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE SEQUENCE"); }
     else { arr_launch(arr_pos); return; }
     touch();
 }
@@ -925,6 +929,17 @@ static void page_go(uint32_t pg)
     sub = 0;
     arm_f = 0xFF;
 }
+static void save_ask(void)                      /* (XANOISE) the SAVE button on SAV: the song to the slot picked, asked first */
+{
+    char buf[32], *e;
+    if (sq_play) { toast("STOP FIRST TO SAVE"); return; }
+    arm_f = 0;
+    arm_ms = fm1_ms;
+    buf[0] = 0;
+    e = fmt_u(str_cat(buf, "SAVE TO "), slot_sel, 2);
+    str_cat(e, "? OCT+ YES, OCT- NO");
+    toast(buf);
+}
 static void ui_input(void)
 {
     uint32_t rel, b = fm1_input_edges(&rel), held = fm1_in.buttons, keys = fm1_in.notes, edges = fm1_input_note_edges(), k, i;
@@ -934,7 +949,9 @@ static void ui_input(void)
     /* the pages (SEQ: a tap opens ARR, again goes back; held, it picks patterns) */
     for (i = 0; i < PG_N; i++)
         if (i != PG_ARR && (b & (1u << PG_BTN[i]))) {
-            if (page == i && (i == PG_SND || i == PG_MST)) sub = (uint8_t)((sub + 1u) % (i == PG_SND ? snd_npages(t) : 3u));
+            if (fx_latch) { fx_latch = 0; punches_off(); }   /* (XANOISE: a page closes PERFORM) */
+            if (page == i && i == PG_SNG) save_ask();     /* (XANOISE) SAVE on SAV: save the song (OCT+ yes, OCT- no) */
+            else if (page == i && (i == PG_SND || i == PG_MST)) sub = (uint8_t)((sub + 1u) % (i == PG_SND ? snd_npages(t) : 3u));
             else if (page != i) page_go(i);
         }
     if (b & (1u << BTN_SEQ)) { seq_down_ms = fm1_ms; seq_used = 0; }
@@ -942,18 +959,16 @@ static void ui_input(void)
         if (page == PG_ARR) page_go(prev_page);
         else { page_go(PG_ARR); arr_pos = (uint8_t)(sq_play && !song.loop ? sq_chainpos : 0u); }
     }
-    /* FX and ARP: held, or held then pressed again quickly (latched until the next press) */
+    /* (XANOISE) FX and ARP: a tap opens, a tap closes (the page under them stays as it was) */
     if (b & (1u << BTN_FX)) {
         if (fx_latch) { fx_latch = 0; punches_off(); toast("PERFORM CLOSED"); }
-        else if (fm1_ms - fx_rel_ms < LATCH_MS) { fx_latch = 1; toast("PERFORM STAYS - FX CLOSES"); }
+        else { fx_latch = 1; toast("PERFORM - FX CLOSES"); }
     }
-    if (rel & (1u << BTN_FX)) { fx_rel_ms = fm1_ms; if (!fx_latch) punches_off(); }
     if (b & (1u << BTN_ARP)) {
         if (arp_latch) { arp_latch = 0; rpt_held = 0; toast("REPEAT OFF"); }
-        else if (fm1_ms - arp_rel_ms < LATCH_MS) { arp_latch = 1; toast("REPEAT STAYS - TAP A PAD"); }
-        else toast("ARP + PAD: NOTE REPEAT");
+        else { arp_latch = 1; toast("REPEAT - TAP A PAD"); }
     }
-    if (rel & (1u << BTN_ARP)) { arp_rel_ms = fm1_ms; if (!arp_latch) rpt_held = 0; }
+    (void)fx_rel_ms; (void)arp_rel_ms;
     if (b & (1u << BTN_PLAY)) {
         if (held & (1u << BTN_HOME)) sit_set(!sit_on);
         else if (sq_play) { sq_req = 2; if (sit_on) sit_set(0); }
@@ -964,7 +979,7 @@ static void ui_input(void)
         int up = (b >> BTN_OCT_UP) & 1u;
         if (page == PG_SNG) {
             if (up && arm_f != 0xFF) fn_press(arm_f);
-            else arm_f = 0xFF;
+            else if (arm_f != 0xFF) { arm_f = 0xFF; toast("CANCELLED"); }
         } else if (TRK_TYPE[t] == TY_SYNTH) {
             char buf[24];
             pad_oct[t] = (int8_t)clampi(pad_oct[t] + (up ? 1 : -1), -2, 2);
@@ -1053,7 +1068,7 @@ static void ui_input(void)
                 e[2] = 0;
                 str_cat(e, SECT_NAME[w]);
                 toast(buf);
-            } else if (w == 8) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE ARRANGEMENT"); touch(); }
+            } else if (w == 8) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE SEQUENCE"); touch(); }
             continue;
         }
         if (page == PG_CHD) { chord_pad((uint32_t)w); continue; }
@@ -1314,8 +1329,12 @@ static void draw_top(void)
     g_text_c(18, 4, fx_on() ? "FX" : PG_NAME[page], fx_on() ? C_REDC : C_ORANGE, T_CROP | T_BOLD);
     s[0] = 0;
     str_cat(s, song.name);
-    s[13] = 0;
+    s[arp_on() ? 10 : 13] = 0;
     g_text(39, 4, s, C_TXT, T_CROP);
+    if (arp_on()) {                             /* (XANOISE) ARP on: AR in green, as FX shows FX */
+        inset(122, 3, 21, 14);
+        g_text_c(133, 4, "AR", RGB(96, 214, 120), T_CROP | T_BOLD);
+    }
     inset(146, 3, 32, 14);
     s[0] = (char)('A' + pc % NPAT);
     s[1] = 0;
@@ -1337,7 +1356,7 @@ static void draw_heads(void)                     /* solid colours: the track pic
     g_rect(0, HEAD_Y, 240, GRID_Y - HEAD_Y, C_BG);
     for (t = 0; t < NT; t++) {
         int32_t x = lane_x(t), w = lane_w(t);
-        int fl = fm1_ms - flash_ms[t] < 90u, off = song.trk[t].mute;
+        int fl = 0, off = song.trk[t].mute;            /* (XANOISE: no flash on a hit, for now) */
         uint16_t c = off ? C_INSET : t == sel ? TRK_COL[t] : g_mix(C_BG, TRK_COL[t], 110), ink;
         if (fl && !off) c = g_mix(TRK_COL[t], RGB(255, 255, 255), 150);
         ink = off ? C_MUTED : (t == sel || fl) ? C_BG : g_mix(TRK_COL[t], RGB(255, 255, 255), 170);   /* dark on bright, light on dim */
@@ -1360,7 +1379,6 @@ static void draw_grid(void)
         int32_t top = clampi(center - NVIS / 2, 0, (int32_t)L > NVIS ? (int32_t)L - NVIS : 0);   /* (no blank rows above 00) */
         int32_t r = top + (int32_t)j, y = GRID_Y + (int32_t)j * ROW_H;
         int play = sq_play && r == sq_row, cur = r == cur_row, skip = B < 16u && (uint32_t)(r & 15) >= B;
-        uint16_t txt = play ? C_BG : skip ? C_FAINT : C_NOTE;
         if (!g_vis(y, ROW_H)) continue;
         if (r < 0 || r >= (int32_t)L) { g_rect(0, y, 240, ROW_H, C_BG); continue; }
         g_rect(0, y, 240, ROW_H, play ? C_ORANGE : skip ? C_BG : (r & 3) == 0 ? C_BEAT : C_ROW);
@@ -1374,11 +1392,12 @@ static void draw_grid(void)
             cell_text(s, c, t);
             if (t == sel) {
                 char a[4] = {s[0], s[1], s[2], 0};
-                g_text(x + 3, y + 1, a, c->n == NOTE_OFF ? C_MUTED : txt, T_CROP | (play ? T_BOLD : 0));
+                uint16_t tc = play ? C_BG : skip ? C_FAINT : TRK_COL[t];   /* (XANOISE: the track's colour) */
+                g_text(x + 3, y + 1, a, c->n == NOTE_OFF ? C_MUTED : tc, T_CROP | (play ? T_BOLD : 0));
                 if (c->n != NOTE_OFF) {
                     char v[2] = {s[4], 0};
-                    g_text(x + 35, y + 1, v, play ? C_BG : C_MUTED, T_CROP);
-                    if (c->fx) g_text(x + 51, y + 1, s + 6, play ? C_BG : C_CYAN, T_CROP);
+                    g_text(x + 35, y + 1, v, play ? C_BG : g_mix(C_BG, TRK_COL[t], 190), T_CROP);
+                    if (c->fx) g_text(x + 51, y + 1, s + 6, play ? C_BG : TRK_COL[t], T_CROP);
                 }
             } else {                            /* narrow: two characters (C4, F#, a slice, a drum and its velocity) */
                 static const char H[] = "0123456789ABCDEF";
@@ -1388,7 +1407,7 @@ static void draw_grid(void)
                 else if (TRK_TYPE[t] == TY_DRUMS) { s[0] = "SHOC"[drm_kind(c->n)]; s[1] = H[c->v & 15u]; }
                 else { note_name(c->n, s); if (s[1] == '-') s[1] = s[2]; }
                 s[2] = 0;
-                g_text(x + 7, y + 1, s, c->n == NOTE_OFF ? C_MUTED : song.trk[t].mute && !play ? C_FAINT : play ? C_BG : TRK_TYPE[t] == TY_SYNTH ? C_NOTE : g_mix(TRK_COL[t], C_TXT, 110), T_CROP);
+                g_text(x + 7, y + 1, s, c->n == NOTE_OFF ? C_MUTED : song.trk[t].mute && !play ? C_FAINT : play ? C_BG : TRK_COL[t], T_CROP);
             }
         }
         if (cur && !play) g_frame(lane_x(sel), y, FOC_W - 2, ROW_H, C_BLUE);
@@ -1402,7 +1421,7 @@ static void draw_perform(void)                  /* FX: the FM-1's keyboard, each
     g_rect(0, TOP_H, 240, BODY_H, C_BG);
     bp_sheet(TOP_H, BODY_H);
     g_text(6, TOP_H + 3, "PERFORM", C_ORANGE, T_CROP | T_BOLD);
-    g_text(70, TOP_H + 3, fx_latch ? "STAYS - FX CLOSES" : "FX TWICE: IT STAYS", C_MUTED, T_CROP);
+    g_text(70, TOP_H + 3, "FX AGAIN: CLOSE", C_MUTED, T_CROP);
     for (k = 0; k < 16u; k++) {                 /* the white keys, and the call-outs over them */
         int32_t x = (int32_t)k * KW, cx = x + KW / 2;
         int on = k < NPUNCH && ((punch_keys >> KEY_OF_WHITE[k]) & 1u), down = (fm1_in.notes >> KEY_OF_WHITE[k]) & 1u;
@@ -1447,7 +1466,7 @@ static void draw_arr(void)
     g_rect(0, TOP_H, 240, BODY_H, C_BG);
     bp_sheet(TOP_H, BODY_H);
     bp_arr();
-    g_text(6, TOP_H + 3, "ARRANGEMENT", C_ORANGE, T_CROP | T_BOLD);
+    g_text(6, TOP_H + 3, "SEQUENCE", C_ORANGE, T_CROP | T_BOLD);
     s[0] = 0;
     if (song.loop) { e = str_cat(s, "LOOP "); e[0] = (char)('A' + song.cur % NPAT); e[1] = 0; }
     else { e = fmt_u(s, n, 0); str_cat(e, " PARTS"); }
@@ -1591,7 +1610,7 @@ static void draw_info(void)
     if (toast_ms && fm1_ms - toast_ms < 1800u) { g_text(5, INFO_Y + 2, toast_s, C_ORANGE, T_CROP); return; }
     if (fx_on()) hint = "WHITE: PUNCH  BLACK: TRACKS";
     else if ((fm1_in.buttons >> BTN_SEQ) & 1u) hint = "WHITE 1-8: PATTERN  9: LOOP";
-    else if (arp_on()) hint = arp_latch ? "TAP A PAD: REPEAT  ARP: OFF" : "PAD: REPEAT  ARP TWICE: STAY";
+    else if (arp_on()) hint = "TAP A PAD: REPEAT  ARP: OFF";
     if (hint) { g_text(5, INFO_Y + 2, hint, C_CYAN, T_CROP); return; }
     s[0] = 0;
     str_cat(s, PG_HINT[page]);
@@ -1606,7 +1625,7 @@ static void draw_info(void)
     g_text(236 - g_text_w(s), INFO_Y + 2, s, C_CYAN, T_CROP | T_BOLD);
 }
 static const char *perf_fn(uint32_t i) { return (const char *const[]){perf_solo ? "SOLO" : "MUTE", "", sit_on ? "SIT OFF" : "SIT", "ALL ON"}[i]; }
-static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"INSERT", "DELETE", song.loop ? "SONG" : "LOOP", "GO"}[i]; }
+static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"INSERT", "DELETE", song.loop ? "SEQ" : "LOOP", "GO"}[i]; }
 static void draw_knobs(void)
 {
     uint32_t i;
@@ -1698,7 +1717,7 @@ static void app_step(void)
     for (t = 0; t < NT; t++) if (trig_ms[t]) { trig_ms[t] = 0; flash_ms[t] = fm1_ms; }
     if (prog_due && fm1_ms - prog_ms > 900u) { prog_due = 0; if (prog_sel != song.prog || prog_sel == 0u) { prog_pick(prog_sel); touch(); } }
     if (aud_off_t != 0xFF && (int32_t)(fm1_ms - aud_off_ms) >= 0) { ev_push(EV_OFF, aud_off_t, 0, 0); aud_off_t = 0xFF; }
-    if (arm_f != 0xFF && fm1_ms - arm_ms > 3000u) arm_f = 0xFF;
+    if (arm_f != 0xFF && fm1_ms - arm_ms > ARM_MS) arm_f = 0xFF;
     if (cur_row >= plen()) cur_row = 0;
     if (fm1_ms - frame_ms >= 33u) {
         frame_ms = fm1_ms;

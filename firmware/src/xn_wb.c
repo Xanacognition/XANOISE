@@ -47,7 +47,8 @@ static void xj_sound(uint32_t jt, uint32_t eng, const char *word)
     const engine_t *e = ENGINES[eng % NENGINES];
     uint32_t k;
     if (trk_eng(t) != eng) set_engine_of(t, eng);
-    for (k = 0; k < e->npresets && !dname_has(e->presets[k].name, word); k++) {}
+    for (k = 0; k < e->npresets && !str_eq(e->presets[k].name, word); k++) {}   /* the name itself, else one holding it */
+    if (k >= e->npresets) for (k = 0; k < e->npresets && !dname_has(e->presets[k].name, word); k++) {}
     apply_preset_to(t, k < e->npresets ? k : 0u);
 }
 static void xj_env(uint32_t jt, int32_t att, int32_t dec, int32_t sus, int32_t rel)   /* ms, ms, %, ms */
@@ -62,19 +63,39 @@ static void xj_env(uint32_t jt, int32_t att, int32_t dec, int32_t sus, int32_t r
         if ((uint32_t)t->p[P_REL] > mx) t->p[P_REL] = (int16_t)mx;
     }
 }
-static void xj_mix(uint32_t jt, int32_t vol, int32_t pan, int32_t rev, int32_t dly)   /* 0..100, -50..50, %, % */
+static int32_t xj_vol_steps(int32_t vol)          /* WND-1's VOL (0..100, square law, 80 as 0 dB) in LEVEL steps (~0.5 dB) */
+{
+    int32_t want = 4096 * vol * vol / 6400, i, best = 0;
+    for (i = 1; i < 128; i++)
+        if (abs((int32_t)LEVEL_Q12[i] - want) < abs((int32_t)LEVEL_Q12[best] - want)) best = i;
+    return vol <= 0 ? -104 : best - 104;
+}
+/* a part's level: VOL, then dB more or less (its role, its sound's trim), its pan and sends */
+static void xj_mix(uint32_t jt, int32_t vol, int32_t db, int32_t pan, int32_t rev, int32_t dly)   /* 0..100, dB, -50..50, %, % */
 {
     track_t *t = &trk[jt % NTRK];
-    t->p[P_LEVEL] = (int16_t)clamp(vol * 127 / 100, 0, 127);
+    t->p[P_LEVEL] = (int16_t)(vol <= 0 ? 0 : clamp(104 + xj_vol_steps(vol) + 2 * db, 1, 127));
     t->p[P_PAN] = (int16_t)clamp(pan * 64 / 50, -64, 63);
     t->p[P_REV] = (int16_t)clamp(rev * 127 / 100, 0, 127);
     t->p[P_DLY] = (int16_t)clamp(dly * 127 / 100, 0, 127);
 }
-static void xj_lane(uint32_t lane, int32_t vol)   /* KIK and DRM share a kit: their levels as its lanes' */
-{
-    trk[XJ_DRM].p[P_LN0 + lane % 8u] = (int16_t)clamp(vol * 127 / 100, 0, 127);
+static void xj_lane(uint32_t lane, int32_t vol, int32_t top)   /* KIK and PER share a kit: their VOLs as its lanes' (square */
+{                                                                  /* law, as VOL), the louder one at 100 % */
+    trk[XJ_DRM].p[P_LN0 + lane % 8u] = (int16_t)(top > 0 ? clamp(vol * 127 / top, 0, 127) : 0);
 }
 static void xj_e(uint32_t jt, uint32_t i, int32_t v) { trk[jt % NTRK].p[P_E0 + i % 8u] = (int16_t)clamp(v, 0, 127); }
+static void xj_tone(uint32_t jt, int32_t cut, int32_t glide)   /* the part's filter (127 open), its glide */
+{
+    track_t *t = &trk[jt % NTRK];
+    t->p[P_FCUT] = (int16_t)clamp(cut, 20, 127);
+    t->p[P_GLIDE] = (int16_t)clamp(glide, 0, 127);
+}
+static int xj_fm6_elsewhere(uint32_t jt)          /* FM6 on another track already (one at most: its CPU) */
+{
+    uint32_t k;
+    for (k = 0; k < NTRK; k++) if (k != jt && trk_eng(&trk[k]) == ENGI_FM6) return 1;
+    return 0;
+}
 static void xj_global(uint32_t g, int32_t v) { song.g[g % G_COUNT] = (int16_t)v; }
 static void xj_tracks6(void) { trk_live = NTRK; }
 static uint32_t xj_scope(int16_t *out, uint32_t n)   /* the output's last n samples, every 8th (WND-1's scope) */
@@ -110,16 +131,60 @@ static uint32_t xj_scope(int16_t *out, uint32_t n)   /* the output's last n samp
 #include "wb/wb_ui.c"
 
 /* ---- WND-1's sounds, mixer and master on JIANT's (the main loop, when they change) */
-typedef struct { uint8_t eng; const char *word; } xs_patch_t;
-static const xs_patch_t XS_PATCH[WB_NSYN] = {      /* WB_SYN_NAME's, each the nearest JIANT preset (light engines first) */
-    {ENGI_ANALOG, "SUB BASS"}, {ENGI_FM6, "FM PLUCK"}, {ENGI_ANALOG, "FAT BASS"}, {ENGI_FM6, "TINE EP"},
-    {ENGI_ANALOG, "JUNO PAD"}, {ENGI_PHASE, "CZ PIANO"}, {ENGI_PHASE, "BELL"}, {ENGI_PHASE, "HARP"},
-    {ENGI_WHEEL, "JAZZ PERC"}, {ENGI_ANALOG, "BRASS"}, {ENGI_ANALOG, "SAW LEAD"}, {ENGI_ANALOG, "RAVE"},
-    {ENGI_ANALOG, "HOOVER"}, {ENGI_ANALOG, "SYNC LEAD"}, {ENGI_LOFI, "PULSE LD"}, {ENGI_ANALOG, "PLUCK"},
-    {ENGI_ANALOG, "PWM STR"}, {ENGI_ANALOG, "STRINGS"}, {ENGI_ANALOG, "ACID"}, {ENGI_ANALOG, "REESE"},
-    {ENGI_ANALOG, "SUB BASS"}, {ENGI_PHASE, "FB BASS"}, {ENGI_VOICE, "TALK BOX"}, {ENGI_VOICE, "CHOIR AAH"},
-    {ENGI_VOICE, "VOX LEAD"}, {ENGI_VOICE, "TALK BOX"}, {ENGI_VOICE, "OOH PAD"}};
+/* WND-1's 27 synth sounds on JIANT's: each three presets of its character (a song takes one of them, by its name: the
+ * same song, the same sounds), its filter (127 open; EDIT's BRIGHT moves it from there) and glide. FM PLUCK off the
+ * bass track takes XS_MEL_FMPLUCK's. FM6 on one track at most (its CPU): the next choice then. trim: dB to one level (tests/wb_test.c WB_CAL: a note
+ * of its role, 1 s, to 0.05 RMS; -7 .. +6) */
+typedef struct { uint8_t eng[3]; const char *word[3]; uint8_t cut, glide; int8_t trim[3]; } xs_patch_t;
+#define XA ENGI_ANALOG
+#define XPH ENGI_PHASE
+#define XF6 ENGI_FM6
+#define XWH ENGI_WHEEL
+#define XVO ENGI_VOICE
+#define XLO ENGI_LOFI
+static const xs_patch_t XS_PATCH[WB_NSYN] = {
+    /* SUB BASS    */ {{XA, XLO, XA}, {"SUB BASS", "TRI BASS", "FAT BASS"}, 70, 0, {-4, 2, 4}},
+    /* FM PLUCK    */ {{XF6, XPH, XA}, {"FM BASS", "SYN BASS", "SQR BASS"}, 84, 0, {6, 0, 2}},
+    /* DUB BASS    */ {{XA, XPH, XA}, {"FAT BASS", "FB BASS", "SQR BASS"}, 62, 0, {4, 0, 2}},
+    /* TAPE EP     */ {{XF6, XPH, XWH}, {"TINE EP", "CZ PIANO", "SOFT KEYS"}, 92, 0, {-2, 0, -3}},
+    /* DETUNE PAD  */ {{XA, XA, XLO}, {"JUNO PAD", "SOFT PAD", "FLOAT PAD"}, 78, 0, {-2, -3, 6}},
+    /* WARM KEYS   */ {{XPH, XWH, XA}, {"CZ PIANO", "SOFT KEYS", "SINE KEY"}, 86, 0, {0, -3, 2}},
+    /* GLASS BELL  */ {{XF6, XA, XF6}, {"SOFT BELL", "GLASS KEYS", "ICE BELL"}, 88, 0, {5, 3, 5}},
+    /* MUSIC BOX   */ {{XF6, XPH, XLO}, {"MARIMBA", "HARP", "SOFT CHIP"}, 94, 0, {6, 2, 0}},
+    /* ORGAN       */ {{XWH, XWH, XWH}, {"JAZZ PERC", "DUB ORGAN", "SOFT KEYS"}, 100, 0, {-2, -3, -4}},
+    /* BRASSY      */ {{XA, XPH, XF6}, {"BRASS", "BRASS", "BRASS"}, 80, 0, {-2, -5, 3}},
+    /* SUPERSAW    */ {{XA, XA, XA}, {"SAW LEAD", "PWM STR", "STRINGS"}, 84, 0, {0, -3, -3}},
+    /* RAVE STAB   */ {{XA, XA, XPH}, {"RAVE", "DUB STAB", "DIGI STAB"}, 84, 0, {-1, 6, 5}},
+    /* HOOVER      */ {{XA, XA, XA}, {"HOOVER", "RAVE", "REESE"}, 80, 0, {-1, -1, 5}},
+    /* HYPER LEAD  */ {{XA, XA, XPH}, {"SYNC LEAD", "MOOG LEAD", "PD LEAD"}, 84, 0, {-1, -1, -1}},
+    /* SQUARE LEAD */ {{XLO, XLO, XA}, {"PULSE LD", "WAVE LEAD", "MOOG LEAD"}, 84, 0, {3, 6, -2}},
+    /* SYNTH PLUCK */ {{XA, XA, XF6}, {"PLUCK", "ARP PLUCK", "PLUCK"}, 90, 0, {6, 6, 6}},
+    /* PWM PAD     */ {{XA, XA, XPH}, {"PWM STR", "DARK PAD", "GLASS PAD"}, 78, 0, {-3, -2, -2}},
+    /* STRINGS     */ {{XA, XPH, XA}, {"STRINGS", "STRING", "CELLO"}, 84, 0, {-3, -4, -2}},
+    /* ACID        */ {{XA, XA, XA}, {"ACID", "ACID", "SQR BASS"}, 127, 0, {6, 6, 2}},
+    /* REESE       */ {{XA, XPH, XA}, {"REESE", "GROWL", "FAT BASS"}, 72, 0, {2, -2, 4}},
+    /* 808 GLIDE   */ {{XA, XLO, XA}, {"SUB BASS", "TRI BASS", "SQR BASS"}, 72, 30, {-4, 2, 2}},
+    /* FUNK BASS   */ {{XPH, XA, XF6}, {"FB BASS", "SQR BASS", "FM BASS"}, 86, 0, {0, 2, 6}},
+    /* VOX CHOP    */ {{XVO, XVO, XVO}, {"TALK BOX", "CHANT", "OOH PAD"}, 96, 0, {3, -7, -4}},
+    /* VOX AH      */ {{XVO, XVO, XPH}, {"CHOIR AAH", "OOH PAD", "VOX PAD"}, 90, 0, {-4, -4, -3}},
+    /* HYPER VOX   */ {{XVO, XVO, XVO}, {"VOX LEAD", "CANTORA ES", "TALK BOX"}, 90, 0, {-2, 0, 3}},
+    /* TALK LEAD   */ {{XVO, XVO, XVO}, {"TALK BOX", "ROBOT EN", "VOX LEAD"}, 92, 0, {3, 1, -2}},
+    /* CHOIR       */ {{XVO, XVO, XPH}, {"OOH PAD", "CHOIR AAH", "VOX PAD"}, 88, 0, {-4, -4, -3}}};
+static const xs_patch_t XS_MEL_FMPLUCK = {{XF6, XPH, XA}, {"FM PLUCK", "HARP", "ARP PLUCK"}, 90, 0, {4, 2, 6}};
+#undef XA
+#undef XPH
+#undef XF6
+#undef XWH
+#undef XVO
+#undef XLO
 static uint32_t xs_sig[8];
+/* the mix (dB on top of VOL): the drums up (WND-1's own mix had them 2-3x the synths' gain), the keys and the synth under
+ * the bass; each JIANT track's sound's trim (XS_PATCH, the kits') */
+#define XS_DB_DRUMS 2
+static const int8_t XS_DB[6] = {2, 2, 2, 0, -3, -4};
+static int8_t xs_trim[NTRK];
+static const char *xs_word[NTRK];                 /* each JIANT track's sound (XS_PATCH's word) */
+static const int8_t XS_KIT_TRIM[WB_NKICK] = {0, 0, 0, 6, 0, 3, 0, 2, 0};   /* (the kits' kicks: LOFI DUST 6 dB under) */
 static uint32_t xs_hash(const void *p, uint32_t n)
 {
     const uint8_t *b = p;
@@ -144,12 +209,21 @@ static uint32_t xs_patch_of(const int16_t *p)
 static void xs_synth(uint32_t wt, uint32_t jt, const int16_t *p)
 {
     uint32_t k = wt < NT && song.trk[wt].patch < WB_NSYN && p == song.trk[wt].p ? song.trk[wt].patch : xs_patch_of(p);
-    static uint8_t loaded[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    if (loaded[jt] != k) {                          /* another sound: its preset (a load releases what sounds) */
-        loaded[jt] = (uint8_t)k;
-        xj_sound(jt, XS_PATCH[k].eng, XS_PATCH[k].word);
+    static uint16_t loaded[NTRK] = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF};
+    const xs_patch_t *x = k == 1u && jt != XJ_BAS ? &XS_MEL_FMPLUCK : &XS_PATCH[k];
+    uint32_t v = (xs_hash(song.name, sizeof song.name) >> (jt * 3u)) % 3u, i, id;
+    for (i = 0; i < 3u && ((x->eng[v] == ENGI_FM6 && xj_fm6_elsewhere(jt)) ||   /* (FM6 once; the synth and the counter */
+                           (jt != XJ_KEY && jt != XJ_BAS && xs_word[XJ_KEY] == x->word[v])); i++)   /* not KEY's sound) */
+        v = (v + 1u) % 3u;
+    xs_word[jt] = x->word[v];
+    id = k << 2 | v;
+    if (loaded[jt] != id) {                         /* another sound: its preset (a load releases what sounds) */
+        loaded[jt] = (uint16_t)id;
+        xj_sound(jt, x->eng[v], x->word[v]);
     }
+    xs_trim[jt] = x->trim[v];
     xj_env(jt, p[PY_ATT], p[PY_DEC], p[PY_SUS], p[PY_REL]);   /* (the knobs: the envelope only, as it plays) */
+    xj_tone(jt, x->cut + (p[PY_INDEX] - WB_SYN[k][PY_INDEX]) * 3 / 2, x->glide);   /* EDIT's BRIGHT: the filter */
     (void)wt;
 }
 /* the drums: JIANT's DRUM tracks share one kit (the section's, eng_drum.c), the kick's sound picks it; each track its
@@ -164,6 +238,7 @@ static void xs_drums(void)
     uint32_t want = song.trk[T_KIK].patch % WB_NKICK;
     if (want != kit) {                              /* the kit: both tracks (the second load keeps the first's kit) */
         kit = (uint8_t)want;
+        xs_trim[XJ_DRM] = xs_trim[XJ_BRK] = XS_KIT_TRIM[want];
         xj_sound(XJ_DRM, ENGI_DRUM, XS_KIT[want]);
         xj_sound(XJ_BRK, ENGI_DRUM, XS_KIT[want]);
     }
@@ -189,7 +264,7 @@ static void xs_sound(void)
         case TY_BREAK: case TY_KICK: case TY_DRUMS: drums = 1; break;
         default:
             xs_synth(t, t == T_BAS ? XJ_BAS : t == T_KEY ? XJ_KEY : XJ_SYN, s->p);
-            if (t == T_KEY) xs_synth(t, XJ_CTR, WB_SYN[clampi(s->p[PY_CTRP], 0, WB_NSYN - 1)]);
+            if (t == T_KEY) { xs_synth(t, XJ_CTR, WB_SYN[clampi(s->p[PY_CTRP], 0, WB_NSYN - 1)]); xs_sig[T_SYN] = 0; }
         }
     }
     if (drums) xs_drums();
@@ -197,22 +272,24 @@ static void xs_sound(void)
 static void xs_mix(void)
 {
     static uint32_t sig;
-    uint32_t t, h = xs_hash(song.trk, sizeof song.trk) ^ song.bpm ^ song.space << 8 ^ song.pump << 16 ^
+    uint32_t t, h = xs_hash(song.trk, sizeof song.trk) ^ xs_hash(xs_trim, sizeof xs_trim) ^ song.bpm ^ song.space << 8 ^ song.pump << 16 ^
                     (uint32_t)song.mvol << 24 ^ punch_lpf * 77u ^ punch_dub * 131u ^ punch_wash * 997u;
     static const uint8_t JT[NT] = {XJ_BRK, XJ_DRM, XJ_DRM, XJ_BAS, XJ_KEY, XJ_SYN};
     if (h == sig) return;
     sig = h;
     for (t = 0; t < NT; t++) {
         const track_t *s = &song.trk[t];
-        if (t == T_KIK) { xj_lane(0, s->vol); continue; }
-        if (t == T_DRM) {
+        if (t == T_KIK) continue;
+        if (t == T_DRM) {                           /* KIK + PER: one JIANT track, the louder one's level, the lanes */
+            int32_t vk = song.trk[T_KIK].vol, vp = s->vol, top = vk > vp ? vk : vp;
             uint32_t l;
-            for (l = 1; l < 8u; l++) xj_lane(l, s->vol);
-            xj_mix(XJ_DRM, 80, s->pan, s->rev, s->dly);
+            xj_lane(0, vk, top);
+            for (l = 1; l < 8u; l++) xj_lane(l, vp, top);
+            xj_mix(XJ_DRM, top, XS_DB_DRUMS + xs_trim[XJ_DRM], s->pan, s->rev, s->dly);
             continue;
         }
-        xj_mix(JT[t], s->vol, s->pan, s->rev, s->dly);
-        if (t == T_KEY) xj_mix(XJ_CTR, s->vol, s->pan, s->rev, s->dly);
+        xj_mix(JT[t], s->vol, XS_DB[t] + xs_trim[JT[t]], s->pan, s->rev, s->dly);
+        if (t == T_KEY) xj_mix(XJ_CTR, s->vol, XS_DB[t] + xs_trim[XJ_CTR], s->pan, s->rev, s->dly);
     }
     xj_global(G_BPM, song.bpm ? song.bpm : 100);
     xj_global(G_RSIZE, 40 + song.space * 87 / 100 + (punch_wash ? 40 : 0) > 127 ? 127 : 40 + song.space * 87 / 100 + (punch_wash ? 40 : 0));

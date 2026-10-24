@@ -448,7 +448,13 @@ static void song_new(uint32_t gi)
     song.trk[T_KEY].p[PY_CHORD] = g->chords ? (int16_t)(3 + rnd(2)) : 0;
     song.trk[T_SYN].p[PY_CHORD] = g->chords ? 0 : (int16_t)(2 + rnd(3));
     song.trk[T_KEY].p[PY_CTR] = g->nctr ? g->ctr[rnd(g->nctr)] : 0;
-    song.trk[T_KEY].p[PY_CTRP] = (int16_t)(const uint8_t[]){6, 7, 15, 22, 24, 14}[rnd(6)];
+    {   /* (XANOISE) the counter voice: a sound of the genre's own keys, not KEY's (WND-1: one of six bright ones at random,
+         * over any genre: it grated) */
+        uint32_t n = g->nsnd[4], k = n ? g->snd[4][rnd(n)] : 6u, tries;
+        for (tries = 0; tries < 6u && n > 1u && k == song.trk[T_KEY].patch; tries++) k = g->snd[4][rnd(n)];
+        song.trk[T_KEY].p[PY_CTRP] = (int16_t)k;
+        song.trk[T_KEY].p[PY_CTRL] = 35;        /* (under the keys: an answer, not a second lead) */
+    }
     roll_new();
     song_name();
     for (i = 0; i < NPAT; i++) gen_pattern(i, i);

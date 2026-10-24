@@ -110,7 +110,7 @@ static void trigger(uint32_t t, uint32_t n, int32_t vel, int32_t gate, int rev, 
         xs_hit(XJ_DRM, 36, vel);
         break;
     case TY_DRUMS:                              /* the note says which drum: snare, clap, closed or open hat */
-        xs_hit(XJ_DRM, XS_DRM_NOTE[drm_kind(n)], drm_kind(n) == DK_HAT || drm_kind(n) == DK_OPEN ? (vel * 12000) >> 15 : vel);
+        xs_hit(XJ_DRM, XS_DRM_NOTE[drm_kind(n)], drm_kind(n) == DK_HAT || drm_kind(n) == DK_OPEN ? (vel * 24000) >> 15 : vel);   /* (the hats under the snare) */
         break;
     default: {
         int32_t notes[5];

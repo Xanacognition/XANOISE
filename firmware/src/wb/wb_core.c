@@ -13,8 +13,8 @@
 enum { T_BRK, T_KIK, T_DRM, T_BAS, T_KEY, T_SYN };
 enum { TY_BREAK, TY_KICK, TY_DRUMS, TY_SYNTH };
 static const uint8_t TRK_TYPE[NT] = {TY_BREAK, TY_KICK, TY_DRUMS, TY_SYNTH, TY_SYNTH, TY_SYNTH};
-static const char *const TRK_ID[NT] = {"BRK", "KIK", "DRM", "BAS", "KEY", "SYN"};
-static const char *const TRK_FULL[NT] = {"BREAK", "KICK", "SNARE + HATS", "BASS", "KEYS", "SYNTH"};
+static const char *const TRK_ID[NT] = {"BRK", "KIK", "PER", "BAS", "KEY", "SYN"};   /* (XANOISE: PER, was DRM) */
+static const char *const TRK_FULL[NT] = {"BREAK", "KICK", "PERCUSSION", "BASS", "KEYS", "SYNTH"};
 /* DRM: which drum a note plays, around its centre (the tune: the note minus the centre) */
 enum { DK_SNARE, DK_HAT, DK_OPEN, DK_CLAP };
 #define DN_SNR 60u                              /* 48..71 */
