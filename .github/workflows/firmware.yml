@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# XANOISE: build the installable package (.fwsc) with JieLi's toolchain on every push of the xanoise branch, attach it
+# to the run, and publish it as the pre-release "xanoise-latest" to download and install from.
+name: firmware
+on:
+  push:
+    branches: [xanoise]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install Pillow fonttools
+      - name: JieLi toolchain and SDK files (cached)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.jieli
+            ~/fw-AC79_AIoT_SDK/cpu/wl82/tools
+          key: jieli-ac79-v1.2.1
+      - name: JieLi toolchain and SDK files
+        run: |
+          # gitee and JieLi's server reset connections now and then: retries with backoff; the cache keeps them
+          retry() { for d in 0 5 15 30 60; do sleep $d; "$@" && return 0; done; return 1; }
+          T=$HOME/fw-AC79_AIoT_SDK/cpu/wl82/tools
+          [ -e "$HOME/.jieli/toolchain" ] || retry sh tools/get_toolchain.sh "$HOME/.jieli"
+          if [ ! -s "$T/uboot.boot" ] || [ ! -s "$T/cfg_tool.bin" ] || [ ! -s "$T/cfg/eq_cfg_hw.bin" ]; then
+            rm -rf "$HOME/fw-AC79_AIoT_SDK"
+            # the tested release, AC79NN_SDK_V1.2.1 (tools/build.py checks the three files)
+            retry git clone --filter=blob:none --no-checkout https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git "$HOME/fw-AC79_AIoT_SDK"
+            cd "$HOME/fw-AC79_AIoT_SDK" && git sparse-checkout set --no-cone /cpu/wl82/tools/uboot.boot /cpu/wl82/tools/cfg_tool.bin \
+              /cpu/wl82/tools/cfg/eq_cfg_hw.bin && retry git checkout d179b4484759423312073f5fbb232501aa491047
+          fi
+      - name: firmware package
+        run: ./build.sh 2>&1 | tee build.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanoise
+          path: build/felucca.fwsc
+          if-no-files-found: error
+      - name: publish the package (pre-release xanoise-latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/felucca.fwsc xanoise.fwsc
+          gh release view xanoise-latest >/dev/null 2>&1 || gh release create xanoise-latest --prerelease --target "$GITHUB_SHA" \
+            --title "XANOISE (latest build of the xanoise branch)" \
+            --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with JIANT's web installer (Use a local file) or tools/fm1_install.py."
+          gh release upload xanoise-latest xanoise.fwsc --clobber
