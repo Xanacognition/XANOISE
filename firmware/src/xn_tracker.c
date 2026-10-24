@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Xanacognition (XANOISE) */
-/* XANOISE: the Wonderblue tracker over JIANT FM. When it is on (xn_on; OCT- and OCT+ together switch it with JIANT's own
- * pages), it draws the screen and takes the panel; JIANT's sequencer, engines, effects and storage run as ever under it,
+/* XANOISE: the Wonderblue tracker over JIANT FM. When it is on (xn_on), it draws the screen and takes the panel; JIANT's sequencer, engines, effects and storage run as ever under it,
  * and the grid shows and edits their own data: the six tracks' 64 steps (core.h step_t).
  *
  *   SELECT     the cursor's step            ALGORITHM  the track            PLAY  play / stop    REC  the keys write
@@ -9,7 +8,13 @@
  *              a DRUM-X step: LANE, HIT, VEL, ACCENT (the lane's)
  *   WHITE      play the selected track (JIANT plays them); with REC, written at the cursor (playing: on the playhead)
  *   BLACK 1-6  the track                    BLACK 8-11  F1 CLEAR, F2 REST, F3 TIE, F4 LENGTH 16 / 32 / 64
+ *   HOME held + SELECT  GEN (JIANT's song generator, with Wonderblue's genres); done there: back here
+ *   FX SCL ENV LFO EDIT GLO SAVE ARP SEQ  JIANT's own page for the button; HOME there: back to the tracker
  * The look is Wonderblue's: Renoise's warm greys, orange for what plays, blue for what is picked. */
+
+#ifndef XN_HOME_BACK
+#define XN_HOME_BACK 1                                  /* HOME on JIANT's pages: back to the tracker (the tests: 0) */
+#endif
 
 static uint8_t xn_row, xn_lane, xn_rec, xn_force = 1;
 static uint8_t xn_last[NTRK] = {36, 60, 60, 48, 60, 60};
@@ -125,7 +130,7 @@ static void xn_draw_top(void)
     xnR(0, XN_TAB - 15, 240, 15, XC_BG);         /* the tabs: the tracker, and how to reach JIANT's pages */
     xnR(0, XN_TAB - 14, 44, 13, XC_ORANGE);
     xnTC(22, XN_TAB - 14, "TRK", XC_BG, XC_ORANGE);
-    xnTR(237, XN_TAB - 14, "JIANT: OCT- + OCT+", XC_MUTED, XC_BG);
+    xnTR(237, XN_TAB - 14, "HOME+SEL: GEN", XC_MUTED, XC_BG);
 }
 static void xn_draw_heads(void)
 {
@@ -393,17 +398,39 @@ static void xn_key_rec(uint32_t k)              /* REC: a white key's note (or t
 /* the panel, while the tracker is on (ui_input.c ui_input_frame, after its upkeep); 1: taken */
 static int xn_frame(uint32_t pressed, uint32_t notes)
 {
-    uint32_t both = xn_bit(B_OCTDN) | xn_bit(B_OCTUP), k, b, w;
+    static uint8_t gen_back;                        /* GEN opened from here: back here when it is done */
+    uint32_t fns = xn_bit(B_FX) | xn_bit(B_SCL) | xn_bit(B_ENV) | xn_bit(B_LFO) | xn_bit(B_EDIT) | xn_bit(B_GLO) |
+                   xn_bit(B_SAVE) | xn_bit(B_ARP) | xn_bit(B_SEQ), k, b, w;
     int32_t d;
-    if ((fm1_in.buttons & both) == both && (pressed & both)) {   /* OCT- and OCT+: the tracker <-> JIANT's pages */
-        xn_on = (uint8_t)!xn_on;
-        xn_force = 1;
+    if (!xn_on) {                                   /* JIANT's pages */
+        if ((gen_back && !gen_on()) ||
+            (XN_HOME_BACK && (pressed & xn_bit(B_HOME)) && !ui.menu && !ui.confirm && !name_on())) {
+            gen_back = 0;
+            xn_on = 1;
+            xn_force = 1;
+            ui.force = 1;
+            return 1;
+        }
+        return 0;
+    }
+    if (ui.menu || dlg_on() || name_on())
+        return 0;
+    if (pressed & fns) {                            /* a function button: JIANT's page for it (it takes the press) */
+        xn_on = 0;
         ui.force = 1;
-        if (!xn_on) song.octave = 0;
+        return 0;
+    }
+    if (fm1_in.buttons & xn_bit(B_HOME)) {          /* HOME held: SELECT opens GEN (as on JIANT's HOME) */
+        if (panel_enc(EN_SELECT) != 0) {
+            nav_go(SEC_HOME, 4u, 1);
+            if (gen_on()) {
+                xn_on = 0;
+                gen_back = 1;
+                ui.home_t0 = 3u;                    /* (HOME used: its release no tap, its hold no MENU; as JIANT's) */
+            }
+        }
         return 1;
     }
-    if (!xn_on || ui.menu || dlg_on() || name_on())
-        return 0;
     if (pressed & xn_bit(B_PLAY)) transport_req = song.playing ? 2u : 1u;
     if (pressed & xn_bit(B_REC)) { xn_rec = (uint8_t)!xn_rec; xn_say(xn_rec ? "REC: THE KEYS WRITE" : "REC OFF"); }
     if ((pressed & xn_bit(B_OCTDN)) && !(fm1_in.buttons & xn_bit(B_OCTUP))) song.octave = (int8_t)(song.octave > -3 ? song.octave - 1 : -3);

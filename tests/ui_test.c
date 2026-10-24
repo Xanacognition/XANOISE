@@ -34,6 +34,10 @@
  *              swallowed; dialogs / count-in / UPDATE MODE keep it on; saved; the sound bit for bit while dark.
  * Built and run by tests/run_tests.sh. */
 #ifndef FELUCCA_CDC
+#ifndef XN_BOOT_ON                                       /* (XANOISE) the tests drive JIANT's screens; the tracker's own: xn_test */
+#define XN_HOME_BACK 0
+#define XN_BOOT_ON 0
+#endif
 #define FELUCCA_CDC 1                                    /* (as src/felucca.c: the console built in, MENU > USB SERIAL) */
 #endif
 #include <stddef.h>

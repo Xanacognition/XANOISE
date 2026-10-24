@@ -1136,7 +1136,10 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 #endif
 
 /* (XANOISE) the tracker over JIANT (xn_tracker.c): on, it draws the screen and takes the panel; the black keys are its own */
-static volatile uint8_t xn_on = 1;
+#ifndef XN_BOOT_ON
+#define XN_BOOT_ON 1                                    /* (XANOISE) the tracker at boot (the host tests: 0, JIANT's screens) */
+#endif
+static volatile uint8_t xn_on = XN_BOOT_ON;
 static int xn_frame(uint32_t pressed, uint32_t notes);
 static void xn_draw(void);
 static void xn_leds(void);

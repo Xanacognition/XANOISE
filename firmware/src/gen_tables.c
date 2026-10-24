@@ -18,7 +18,8 @@ enum { GP_DRUMS, GP_BASS, GP_CHORDS, GP_ARP, GP_LEAD, GP_N };   /* the parts the
 enum { DM_HOUSE, DM_DEEP, DM_MICRO, DM_TECHHOUSE, DM_TECHNO, DM_DETROIT, DM_DUBTECH, DM_HYPNO, DM_HARD, DM_ELECTRO,
        DM_EBM, DM_ITALO, DM_SYNTHPOP, DM_DARKWAVE, DM_POSTPUNK, DM_TRIBAL, DM_RBOX, DM_KLING, DM_MOTORIK, DM_INDIE,
        DM_SHOEGAZE, DM_FUNK, DM_DISCO, DM_BOOMBAP, DM_TRAP, DM_UKG, DM_DUBSTEP, DM_BREAKS, DM_DNB, DM_ONEDROP,
-       DM_STEPPERS, DM_ROCKERS, DM_JAZZ, DM_BOSSA, DM_AFRO, DM_SPARSE, DM_IDM, DM_JOYDIV, DM_NEWORDER, DM_NONE };
+       DM_STEPPERS, DM_ROCKERS, DM_JAZZ, DM_BOSSA, DM_AFRO, DM_SPARSE, DM_IDM, DM_JOYDIV, DM_NEWORDER,
+       DM_TRIPHOP, DM_AMBREAK, DM_LOFI, DM_JUNGLE, DM_TOWN, DM_BATTLE, DM_BOSS, DM_NONE };   /* (XANOISE: the last seven) */
 /* (0.9.7, flash) the maps and the pools below are the text tools/gen_drum_maps.py reads (not compiled): build/gen/
  * gen_drum_maps.h holds them packed, each lane once at 16 levels a nibble (GM_LANE), the tables as lane numbers
  * (DRUM_MAP_I, HAT_POOL_I ..: gen.c gm_level) */
@@ -66,6 +67,16 @@ static const char *const DRUM_MAP[][8] = {
      * snare and a clap, driven sixteenths, open hats off the beat, toms into the one) */
     [DM_JOYDIV]    = {"X..X..X.X..X..X.", "....X.......X...", "", "7777777777777777", "", "..........4...5.", "", ""},
     [DM_NEWORDER]  = {"X...X...X...X...", "....X.......X...", "....5.......5...", "7676767676767676", "..6...6...6...6.", "..............44", "", ""},
+    /* (XANOISE) Wonderblue's: trip hop's lazy kick under a hard backbeat; ambient breakbeat's lifted break; lo-fi's
+     * dusty one-bar loop; jungle's chopped break at 160+; and the RPG's: the town's gentle two, the battle's drive,
+     * the boss's double kick and tom runs */
+    [DM_TRIPHOP]   = {"X......7..8.....", "....X.......X...", "", "7.4.7.4.7.4.7.4.", "..............4.", "", "...2.....2....2.", ""},
+    [DM_AMBREAK]   = {"X.7.......X.6...", "....X..3.3..X..3", "", "6.4.6.4.6.4.6.4.", "......5.......5.", "", ".........3......", ""},
+    [DM_LOFI]      = {"X.......7.6.....", "....X.......X...", "", "7.3.7.3.7.3.7.33", "", "", "..........3.....", ""},
+    [DM_JUNGLE]    = {"X.X.......X.....", "....X..5.5..X..5", "", "6565656565656565", "..........6.....", "", "", ""},
+    [DM_TOWN]      = {"X.......X.......", "....7.......7...", "", "5.5.5.5.5.5.5.5.", "", "", "......4.......4.", ""},
+    [DM_BATTLE]    = {"X...X...X.6.X...", "....X.......X...", "", "7.7.7.7.7.7.7.7.", "..6...6...6...6.", "............5555", "", ""},
+    [DM_BOSS]      = {"X.6.X.6.X.6.X.66", "....X.......X...", "....5.......5...", "8484848484848484", "", "..........6.6666", "", ""},
     [DM_NONE]      = {"", "", "", "", "", "", "", ""},
 };
 /* (0.6.97) a throw's own hats and percussion: a hat pattern, an open hat pattern and a percussion line from these pools
@@ -353,6 +364,9 @@ static const uint8_t DM_ALT[DM_NONE][2] = {
     [DM_BREAKS] = {DM_UKG, DM_DNB}, [DM_DNB] = {DM_BREAKS, DM_DUBSTEP}, [DM_ONEDROP] = {DM_STEPPERS, DM_ROCKERS},
     [DM_STEPPERS] = {DM_ONEDROP, DM_ROCKERS}, [DM_ROCKERS] = {DM_ONEDROP, DM_STEPPERS}, [DM_JAZZ] = {DM_BOSSA, DM_SPARSE},
     [DM_BOSSA] = {DM_JAZZ, DM_AFRO}, [DM_AFRO] = {DM_FUNK, DM_TRIBAL}, [DM_SPARSE] = {DM_JAZZ, DM_IDM}, [DM_IDM] = {DM_SPARSE, DM_BREAKS},
+    [DM_TRIPHOP] = {DM_BOOMBAP, DM_LOFI}, [DM_AMBREAK] = {DM_BREAKS, DM_JUNGLE}, [DM_LOFI] = {DM_BOOMBAP, DM_TRIPHOP},
+    [DM_JUNGLE] = {DM_DNB, DM_AMBREAK}, [DM_TOWN] = {DM_BOSSA, DM_ROCKERS}, [DM_BATTLE] = {DM_BOSS, DM_HARD},
+    [DM_BOSS] = {DM_BATTLE, DM_HARD},
 };
 static const uint8_t CS_ALT[CS_TRANCE + 1][2] = {
     [CS_HOLD] = {CS_SWELL, CS_PULSE}, [CS_SWELL] = {CS_HOLD, CS_PULSE}, [CS_STAB] = {CS_PULSE, CS_DUB}, [CS_PULSE] = {CS_STAB, CS_HOLD},
@@ -581,6 +595,35 @@ static const ggenre_t GENRE[] = {
      {BA_AROUND, BA_DUST, BA_JUNGLE}, 33, KM_INTERLOCK, 55, {PR_I_IV, PR_JAZZ, PR_MINOR4}, 2, CS_COMP, VM_QUART,
      {AP_WALK, AP_BROKEN}, LD_MOTIF, AMT(80, 85, 60, 30, 45), {KIT_SOFT, SR_FMBASS, SR_EP, SR_KEYS, SR_VOXLEAD}, SR_TEXTURE,
      4, 4, 65, 0, FM_PARTS, 50, HF_JAZZY},
+    /* ---- (XANOISE) Wonderblue's: after JIANT's, so every genre number before them names what it did */
+    {"TRIP HOP", 76, 92, 12, {SC_MIN, SC_DOR, SC_HARM, SC_MIN}, DM_TRIPHOP, 100, KIT_SOFT, 2, HC_FUNK, FL_NONE, 3,
+     {BA_DUB, BA_BOOMBAP, BA_PEDAL}, 29, KM_SUSTAIN, 90, {PR_MINOR4, PR_I_VI, PR_ANDAL}, 2, CS_SWELL, VM_RICH,
+     {AP_GLASS, AP_BROKEN}, LD_SPARSE, AMT(90, 85, 75, 25, 35), {KIT_SOFT, SR_SUB, SR_STRINGS, SR_EP, SR_VOXLEAD}, SR_TEXTURE,
+     0, 4, 70, 0, FM_PARTS, 40, HF_CINE | HX_RAISE},
+    {"AMBIENT BREAK", 96, 124, 8, {SC_DOR, SC_LYD, SC_MIN, SC_MAJ}, DM_AMBREAK, 100, KIT_BREAKS, 2, HC_FUNK, FL_LINEAR, 1,
+     {BA_PEDAL, BA_DUB, BA_FIFTHS}, 29, KM_SUSTAIN, 110, {PR_I_II, PR_I_IV, PR_SUS}, 4, CS_SWELL, VM_RICH,
+     {AP_GLASS, AP_UPDOWN}, LD_TINTI, AMT(85, 70, 95, 50, 30), {KIT_BREAKS, SR_SUB, SR_PAD, SR_BELL, SR_SINEKEY}, SR_DRONE,
+     4, 4, 85, 1, FM_ARC, 30, HF_COLOR},
+    {"LOFI HIP HOP", 70, 88, 22, {SC_DOR, SC_MAJ, SC_MIN, SC_DOR}, DM_LOFI, 100, KIT_SOFT, 2, HC_FUNK, FL_NONE, 3,
+     {BA_BOOMBAP, BA_DUST, BA_DEEPWALK}, 33, KM_DOUBLE, 70, {PR_JAZZ, PR_DEEP4, PR_I_IV}, 1, CS_COMP, VM_RICH,
+     {AP_BROKEN, AP_WALK}, LD_SPARSE, AMT(90, 80, 85, 20, 30), {KIT_SOFT, SR_SUB, SR_EP, SR_KEYS, SR_BELL}, SR_TEXTURE,
+     0, 1, 50, 0, FM_LOOP, 60, HF_JAZZY},
+    {"JUNGLE", 160, 172, 0, {SC_MIN, SC_DOR, SC_MIN, SC_PHRY}, DM_JUNGLE, 100, KIT_BREAKS, 3, HC_FUNK, FL_LINEAR, 1,
+     {BA_JUNGLE, BA_DUB, BA_DNB}, 29, KM_SUSTAIN, 100, {PR_ONE, PR_I_VI, PR_I_VII}, 4, CS_SWELL, VM_RICH,
+     {AP_BROKEN, AP_GLASS}, LD_SPARSE, AMT(100, 95, 60, 20, 30), {KIT_BREAKS, SR_SUB, SR_PAD, SR_STAB, SR_VOXLEAD}, SR_NOISE,
+     2, 4, 55, 1, FM_CLUB, 20, HF_LOOP},
+    {"RPG TOWN", 96, 116, 0, {SC_MAJ, SC_LYD, SC_MIX, SC_MAJ}, DM_TOWN, 90, KIT_SOFT, 0, HC_FLAT, FL_TOM, 0,
+     {BA_ROOT5, BA_TWOFEEL, BA_BOSSA}, 36, KM_ANSWER, 60, {PR_POP, PR_MARIO, PR_50S}, 1, CS_PULSE, VM_PLAIN,
+     {AP_ALBERTI, AP_UP}, LD_HOOK, AMT(60, 80, 70, 70, 100), {KIT_SOFT, SR_FMBASS, SR_KEYS, SR_BELL, SR_CHIP}, SR_STRINGS,
+     0, 1, 40, 0, FM_PARTS, 0, HF_POP | HX_SEC},
+    {"RPG BATTLE", 140, 160, 0, {SC_MIN, SC_HARM, SC_DOR, SC_MIN}, DM_BATTLE, 100, KIT_BREAKS, 1, HC_MACHINE, FL_TOM, 0,
+     {BA_OCTBNC, BA_PUMP8, BA_ROCK8}, 29, KM_DOUBLE, 55, {PR_EPIC, PR_ANDAL, PR_AEOL}, 1, CS_PULSE, VM_POWER,
+     {AP_OCTAVES, AP_UP}, LD_HOOK, AMT(95, 95, 70, 80, 100), {KIT_BREAKS, SR_FMBASS, SR_STRINGS, SR_CHIP, SR_LEAD}, SR_HOOVER,
+     0, 1, 30, 0, FM_PARTS, 0, HF_POP | HX_RAISE},
+    {"RPG BOSS", 150, 176, 0, {SC_PHRY, SC_HARM, SC_MIN, SC_PHRY}, DM_BOSS, 100, KIT_INDUS, 0, HC_MACHINE, FL_TOM, 0,
+     {BA_ROLL16, BA_PUNK16, BA_EBM}, 28, KM_DOUBLE, 50, {PR_PHRY, PR_ANDAL, PR_EPIC}, 1, CS_POWER, VM_POWER,
+     {AP_OCTAVES, AP_ZIGZAG}, LD_MECH, AMT(100, 100, 75, 85, 90), {KIT_INDUS, SR_REESE, SR_WALL, SR_CHIP, SR_LEAD}, SR_CHOIR,
+     0, 1, 35, 0, FM_PARTS, 0, HF_CINE | HX_RAISE},
 };
 #define NGENRE (sizeof GENRE / sizeof GENRE[0])
 
