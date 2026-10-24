@@ -2344,6 +2344,10 @@ static void ui_draw_body(uint32_t counting)
         ui.force = 0;
         return;
     }
+    if (xn_on && !dlg_on() && !name_on()) {             /* (XANOISE) the tracker's screen (xn_tracker.c) */
+        xn_draw();
+        return;
+    }
     if (counting && !dlg_on() && !name_on()) {          /* the count-in: over the page (and a layer) */
         draw_countin();
         draw_head();

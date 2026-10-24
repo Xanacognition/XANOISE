@@ -349,6 +349,10 @@ static void ui_leds(void)
     static uint8_t ready;
     if (fm1_led_anim_on())                              /* the power-on sweep has them (main.c boot_leds) */
         return;
+    if (xn_on && !ui.menu) {                            /* (XANOISE) the tracker's (xn_tracker.c) */
+        xn_leds();
+        return;
+    }
     if (!ready) {
         led_pos_init();
         ready = 1;
@@ -2100,6 +2104,8 @@ static void ui_input_frame(void)
         usb_serial_apply();                             /* (MENU > USB SERIAL: when the menu has closed) */
     if (scr_input(pressed, notes))                      /* MENU > SCREEN OFF: dark, or the wake gesture: swallowed */
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
+    if (xn_frame(pressed, notes))                       /* (XANOISE) the tracker has the panel (xn_tracker.c) */
+        return;
     home = btn_hold(&ui.home_t0, B_HOME, now, 1);
     rec = btn_hold(&ui.rec_t0, B_REC, now, 0);          /* (a tap; held, the REC layer: ui_layer.c) */
     seq = btn_hold(&ui.seq_t0, B_SEQ, now, !ui.menu && !dlg_on());

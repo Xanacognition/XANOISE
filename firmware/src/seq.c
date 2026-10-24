@@ -1135,6 +1135,11 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
+/* (XANOISE) the tracker over JIANT (xn_tracker.c): on, it draws the screen and takes the panel; the black keys are its own */
+static volatile uint8_t xn_on = 1;
+static int xn_frame(uint32_t pressed, uint32_t notes);
+static void xn_draw(void);
+static void xn_leds(void);
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
@@ -1158,6 +1163,10 @@ static void keyboard_block(void)
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
+                kb_note[k] = KB_SILENT;
+                continue;
+            }
+            if (xn_on && key_black(k) && !lay) {  /* (XANOISE) the tracker: black keys pick tracks and F1..F4 */
                 kb_note[k] = KB_SILENT;
                 continue;
             }
