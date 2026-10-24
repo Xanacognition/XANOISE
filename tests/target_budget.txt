@@ -3,7 +3,7 @@
 # Rewritten by BUDGET_UPDATE=1.
 analog_render 581
 phase_render 102
-lofi_render 253
+lofi_render 288
 formant_render 312
 wheel_render 267
 wheel_block 86
@@ -21,14 +21,14 @@ drum_side_add 30
 drum_mix 126
 slicer_bus 819
 fm1_alnk0_irq 270
-fm1_timer5_irq 33439
+fm1_timer5_irq 818
 ep4_tx 0
 ep4_fill 148
 click_render 30
 mod_begin 166
 mod_voice 30
-mod_end 7
-perf_begin 11
+mod_end 6
+perf_begin 17
 perf_mute 18
 perf_pre 31
 perf_block 93
