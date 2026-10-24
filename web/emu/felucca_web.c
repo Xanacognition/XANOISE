@@ -22,7 +22,9 @@
 #include <stdint.h>
 
 #define FELUCCA_WEB 1
-#define XN_WB 1                          /* (XANOISE) Wonderblue-OS over JIANT, as src/felucca.c */
+#ifndef XN_WB
+#define XN_WB 1                          /* (XANOISE) Wonderblue-OS over JIANT, as src/felucca.c (JIANT's tests: 0) */
+#endif
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1                    /* as src/felucca.c: MENU > USB SERIAL is there (nothing behind it) */
 #endif
@@ -239,7 +241,9 @@ static void cdc_task(void) {}
 #define usb_retry(ms) ((void)(ms))
 #define usb_detach() ((void)0)
 #include "../../firmware/src/master.c"
+#if XN_WB
 #include "../../firmware/src/xn_wb.c"
+#endif
 #include "../../firmware/src/main.c"
 #undef usb_poll
 #undef usb_start
@@ -270,7 +274,11 @@ static void web_power_on(void)
     kb_boot_hold = 1;                     /* main.c (#137): the keys silent under the splash */
     audio_init();
     boot_leds();                          /* main.c: the power-on LED sweep, from the scan's start */
+#if XN_WB
     wb_init();                            /* main.c (XANOISE): Wonderblue's song, its sounds on JIANT's tracks */
+#else
+    autosave_boot(boot_clean);            /* main.c: the last session's music (1.2, project.c) */
+#endif
     session_dice(web_seed_v);             /* main.c (JIANT 0.4): this session's macros (the page's seed: web_seed) */
     web_boot_ms = fm1_ms + 30u + SPL_WRITE + SPL_HOLD;   /* main.c: 30 ms + the splash before the first frame */
     web_booted = 1;
@@ -284,8 +292,17 @@ static void web_frame(void)
         song.batt_raw = song.batt_raw ? song.batt_raw + (b - song.batt_raw) / 32 : b;
     master_poll();
     felucca_dbg.ui_frames++;
+#if XN_WB
     wb_frame();                           /* main.c (XANOISE): Wonderblue's panel, screen, LEDs, store */
     settings_poll();
+#else
+    ui_input();
+    settings_poll();
+    autosave_poll();
+    song_poll();
+    ui_leds();
+    ui_draw();
+#endif
 }
 
 /* output ring, stereo float, filled by web_ms, drained by web_render */
@@ -321,9 +338,11 @@ static void web_ms(void)
         lcd_fill(0, 0, 240, 240, T_BG);
         web_last_frame = fm1_ms - 15u;
     }
-    if (fm1_ms - web_last_frame >= 4u) {                 /* main.c (XANOISE): a pass of the loop every 4 ms */
+    if (fm1_ms - web_last_frame >= (XN_WB ? 4u : 15u)) {   /* main.c: a pass of the loop (XANOISE: every 4 ms) */
         web_last_frame = fm1_ms;
         web_frame();
+    } else if (!XN_WB) {
+        ui_input();                                       /* main.c's wait loop (JIANT's) */
     }
 }
 
