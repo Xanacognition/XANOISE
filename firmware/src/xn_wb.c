@@ -74,6 +74,7 @@ static void xj_lane(uint32_t lane, int32_t vol)   /* KIK and DRM share a kit: th
 {
     trk[XJ_DRM].p[P_LN0 + lane % 8u] = (int16_t)clamp(vol * 127 / 100, 0, 127);
 }
+static void xj_e(uint32_t jt, uint32_t i, int32_t v) { trk[jt % NTRK].p[P_E0 + i % 8u] = (int16_t)clamp(v, 0, 127); }
 static void xj_global(uint32_t g, int32_t v) { song.g[g % G_COUNT] = (int16_t)v; }
 static void xj_tracks6(void) { trk_live = NTRK; }
 static uint32_t xj_scope(int16_t *out, uint32_t n)   /* the output's last n samples, every 8th (WND-1's scope) */
@@ -142,28 +143,56 @@ static uint32_t xs_patch_of(const int16_t *p)
 }
 static void xs_synth(uint32_t wt, uint32_t jt, const int16_t *p)
 {
-    uint32_t k = xs_patch_of(p);
-    xj_sound(jt, XS_PATCH[k].eng, XS_PATCH[k].word);
-    xj_env(jt, p[PY_ATT], p[PY_DEC], p[PY_SUS], p[PY_REL]);
+    uint32_t k = wt < NT && song.trk[wt].patch < WB_NSYN && p == song.trk[wt].p ? song.trk[wt].patch : xs_patch_of(p);
+    static uint8_t loaded[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (loaded[jt] != k) {                          /* another sound: its preset (a load releases what sounds) */
+        loaded[jt] = (uint8_t)k;
+        xj_sound(jt, XS_PATCH[k].eng, XS_PATCH[k].word);
+    }
+    xj_env(jt, p[PY_ATT], p[PY_DEC], p[PY_SUS], p[PY_REL]);   /* (the knobs: the envelope only, as it plays) */
     (void)wt;
+}
+/* the drums: JIANT's DRUM tracks share one kit (the section's, eng_drum.c), the kick's sound picks it; each track its
+ * own TUNE TONE DECAY FM ENV DRIVE on it (E1 E2 E3 E5 E7: 64 as the kit has them): the break's from BRK's PITCH TONE
+ * GATE (a little driven: a record's), the kit's from KIK's TUNE DECAY PUNCH DRIVE and the snare's TONE */
+static const char *const XS_KIT[WB_NKICK] = {"909 CLUB", "808 BOOM", "INDUSTRIAL", "LOFI DUST", "808 BOOM", "TECHNO RAW",
+                                              "INDUSTRIAL", "ACOUSTIC", "909 CLUB"};
+static void xs_drums(void)
+{
+    static uint8_t kit = 0xFF;
+    const int16_t *k = song.trk[T_KIK].p, *d = song.trk[T_DRM].p, *b = song.trk[T_BRK].p;
+    uint32_t want = song.trk[T_KIK].patch % WB_NKICK;
+    if (want != kit) {                              /* the kit: both tracks (the second load keeps the first's kit) */
+        kit = (uint8_t)want;
+        xj_sound(XJ_DRM, ENGI_DRUM, XS_KIT[want]);
+        xj_sound(XJ_BRK, ENGI_DRUM, XS_KIT[want]);
+    }
+    xj_e(XJ_DRM, 1, 64 + k[PK_TUNE] * 64 / 12);
+    xj_e(XJ_DRM, 2, 32 + d[PS_TONE] * 64 / 100);
+    xj_e(XJ_DRM, 3, 64 + (k[PK_DECAY] - 600) * 64 / 900);
+    xj_e(XJ_DRM, 5, k[PK_PUNCH] * 64 / 100);
+    xj_e(XJ_DRM, 7, k[PK_DRIVE] * 100 / 100);
+    xj_e(XJ_BRK, 1, 64 + b[PB_PITCH] * 64 / 12);
+    xj_e(XJ_BRK, 2, 24 + b[PB_TONE] * 80 / 100);
+    xj_e(XJ_BRK, 3, b[PB_GATE] * 64 / 100);
+    xj_e(XJ_BRK, 7, 28);
 }
 static void xs_sound(void)
 {
-    uint32_t t, h;
+    uint32_t t, h, drums = 0;
     for (t = 0; t < NT; t++) {
         const track_t *s = &song.trk[t];
         h = xs_hash(s->p, sizeof s->p) ^ s->patch * 7919u ^ s->patch2 * 104729u;
         if (h == xs_sig[t]) continue;
         xs_sig[t] = h;
         switch (TRK_TYPE[t]) {
-        case TY_BREAK: xj_sound(XJ_BRK, ENGI_DRUM, "BREAKS"); break;
-        case TY_KICK: xj_sound(XJ_DRM, ENGI_DRUM, "LOFI DUST"); xs_sig[T_DRM] = 0; break;
-        case TY_DRUMS: break;
+        case TY_BREAK: case TY_KICK: case TY_DRUMS: drums = 1; break;
         default:
             xs_synth(t, t == T_BAS ? XJ_BAS : t == T_KEY ? XJ_KEY : XJ_SYN, s->p);
             if (t == T_KEY) xs_synth(t, XJ_CTR, WB_SYN[clampi(s->p[PY_CTRP], 0, WB_NSYN - 1)]);
         }
     }
+    if (drums) xs_drums();
 }
 static void xs_mix(void)
 {
