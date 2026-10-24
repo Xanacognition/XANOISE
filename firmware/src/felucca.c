@@ -34,8 +34,10 @@
 #ifndef FELUCCA_HOTRAM
 #define FELUCCA_HOTRAM 1         /* (JIANT 0.6.78, experimental) core 0's hottest audio code in RAM (core.h) */
 #endif
-#ifndef FELUCCA_ID
+#ifndef XN_WB
 #define XN_WB 1                  /* (XANOISE) Wonderblue-OS's front end over JIANT's sound (xn_wb.c); 0: JIANT's own */
+#endif
+#ifndef FELUCCA_ID
 #define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
