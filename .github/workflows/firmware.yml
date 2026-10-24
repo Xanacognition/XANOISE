@@ -39,6 +39,9 @@ jobs:
           fi
       - name: firmware package
         run: ./build.sh 2>&1 | tee build.log
+      - name: size map (the flash budget, by function)
+        run: |
+          python3 tools/size_map.py "$HOME/.jieli/toolchain/common/bin/objdump" build/felucca.elf | tee size_map.txt
       - uses: actions/upload-artifact@v4
         with:
           name: xanoise
