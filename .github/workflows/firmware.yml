@@ -38,7 +38,11 @@ jobs:
               /cpu/wl82/tools/cfg/eq_cfg_hw.bin && retry git checkout d179b4484759423312073f5fbb232501aa491047
           fi
       - name: firmware package
-        run: ./build.sh 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          ./build.sh 2>&1 | tee build.log
+      - name: every function the firmware calls exists on the FM-1 (tools/check_extern.sh)
+        run: sh tools/check_extern.sh
       - name: size map (the flash budget, by function)
         run: |
           python3 tools/size_map.py "$HOME/.jieli/toolchain/common/bin/objdump" build/felucca.elf | tee size_map.txt
@@ -59,4 +63,5 @@ jobs:
       - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
         run: |
           pip install numpy
+          set -o pipefail
           sh tests/run_tests.sh 2>&1 | tee tests.log

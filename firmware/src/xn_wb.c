@@ -66,8 +66,10 @@ static void xj_env(uint32_t jt, int32_t att, int32_t dec, int32_t sus, int32_t r
 static int32_t xj_vol_steps(int32_t vol)          /* WND-1's VOL (0..100, square law, 80 as 0 dB) in LEVEL steps (~0.5 dB) */
 {
     int32_t want = 4096 * vol * vol / 6400, i, best = 0;
-    for (i = 1; i < 128; i++)
-        if (abs((int32_t)LEVEL_Q12[i] - want) < abs((int32_t)LEVEL_Q12[best] - want)) best = i;
+    for (i = 1; i < 128; i++) {                      /* (no libc abs on the FM-1) */
+        int32_t d = (int32_t)LEVEL_Q12[i] - want, e = (int32_t)LEVEL_Q12[best] - want;
+        if ((d < 0 ? -d : d) < (e < 0 ? -e : e)) best = i;
+    }
     return vol <= 0 ? -104 : best - 104;
 }
 /* a part's level: VOL, then dB more or less (its role, its sound's trim), its pan and sends */
