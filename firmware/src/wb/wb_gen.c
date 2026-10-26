@@ -58,7 +58,7 @@ static void roll_new(void)
     const uint8_t *L[4] = {g->brkm, g->basm, g->keym, g->synm};
     for (a = 0; a < 4u; a++) {
         uint32_t n = g->nm[a] ? g->nm[a] : 1u, m = L[a][rnd(n)], o = m;
-        if (n > 1u) { do o = L[a][rnd(n)]; while (o == m); }
+        if (n > 1u) { uint32_t k = 0; do o = L[a][rnd(n)]; while (o == m && ++k < 16u); }   /* (XENOISE: bounded: a list of one kind ends) */
         song.roll[RL_BRK + a] = (uint8_t)m;
         song.roll[RL_BRK2 + a] = (uint8_t)o;
     }

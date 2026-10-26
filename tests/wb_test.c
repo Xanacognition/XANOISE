@@ -59,6 +59,12 @@ int main(void)
     check("boot: WND-1's tracker (TRK), the six tracks live on JIANT", page == PG_TRK && trk_live == NTRK);
     check("the tabs: HOM SAV CHD MIX GEN SEQ EDT MST; the third track PER",
           !strcmp(PG_NAME[0], "HOM") && !strcmp(PG_NAME[5], "SEQ") && !strcmp(PG_NAME[6], "EDT") && !strcmp(TRK_ID[2], "PER"));
+    {   /* (XENOISE) every genre writes a song (a genre's table that loops the generator would hang the box) */
+        uint32_t g;
+        for (g = 0; g < WB_NGENRE; g++) song_new(g);
+        check("every genre writes a new song (none hangs the generator)", 1);
+        song_new(4);
+    }
     {   /* (XENOISE) the song's form: SONG by default; SHUFFLE another that makes sense */
         uint32_t k, j, ok = 1, differ = 0;
         uint8_t was[16];
