@@ -11,7 +11,10 @@
  *   ALGORITHM      (XENOISE) the track, BRK .. SYN; on HOM past SYN: the visualizer (xn_vis.c)
  *   SAV            (XENOISE) K1 slot, K2 genre, K3 save, K4 load (OCT+ yes, OCT- no); OCT- a tap: delete (again: yes);
  *                  OCT+ a tap: a new empty song, four: a new song of the genre (OCT+ yes)
- *   GLO on MST     (XENOISE) SETTINGS: the theme (COMBAT, CLASSIC), HOM's black keys
+ *   HOME on HOM    (XENOISE) the tracker alone (the knobs rest, the grid longer); again: NOTE VEL FX AMT on the knobs
+ *   GLO            (XENOISE) MST, the settings: again, its next page (TEMPO, TONE, GROOVE, SYSTEM: the theme, the black keys)
+ *   SEQ            (XENOISE) the sequence's slots: K1 copy, K2 paste, K3 insert, K4 outsert, OCT+ add, OCT- delete the last,
+ *                  PRESETS the slot's pattern; SEQ again: LIVE, the white keys queue patterns 1..8
  *   SAVE SNG  HOME TRK  EDIT SND  SCL CHD  LFO GEN  ENV MIX  GLO MST  SEQ (a tap) ARR (again: the page's next knobs)
  *   FX             held: PERFORM (white: punch-ins, black: mute / solo); held then pressed again: it stays
  *   SEQ + white    pattern 1..8 (9: loop / chain)     ARP + pad  note repeat (ARP held then pressed again: it stays)
@@ -20,17 +23,22 @@
 
 /* (XENOISE) the tabs in the panel's order: HOME, SAVE, SCL, then ENV (MIX) left of LFO (GEN) as on the FM-1, SEQ, EDIT,
  * GLO; renamed for what they hold (WND-1: TRK SNG CHD MIX GEN ARR SND MST) */
-enum { PG_TRK, PG_SNG, PG_CHD, PG_MIX, PG_GEN, PG_ARR, PG_SND, PG_MST, PG_N, PG_SET = PG_N };   /* (XENOISE) SETTINGS: GLO on MST */
-static const char *const PG_NAME[PG_N + 1] = {"HOM", "SAV", "CHD", "MIX", "GEN", "SEQ", "EDT", "MST", "SET"};
-static const char *const PG_HINT[PG_N + 1] = {"SELECT ROW, PLAY PADS", "K3 SAVE  K4 LOAD", "WHITE KEYS: CHORDS",
-                                              "LEVEL, PAN, SENDS", "CHANCE, MUTATION, DRIFT", "WHITE KEY: GO TO PART",
-                                              "EDIT THE SOUND", "TEMPO, SWING, METER", "GLO: BACK TO MST"};
+enum { PG_TRK, PG_SNG, PG_CHD, PG_MIX, PG_GEN, PG_ARR, PG_SND, PG_MST, PG_N };
+static const char *const PG_NAME[PG_N] = {"HOM", "SAV", "CHD", "MIX", "GEN", "SEQ", "EDT", "MST"};
+static const char *const PG_HINT[PG_N] = {"SELECT ROW, PLAY PADS", "K3 SAVE  K4 LOAD", "WHITE KEYS: CHORDS",
+                                          "LEVEL, PAN, SENDS", "CHANCE, MUTATION, DRIFT", "SEQ AGAIN: LIVE",
+                                          "EDIT THE SOUND", "GLO: THE NEXT PAGE"};
+#define MST_NSUB 4u                             /* (XENOISE) MST's pages: TEMPO, TONE, GROOVE, SYSTEM (GLO steps through them) */
+static const char *const MST_SUB_NAME[MST_NSUB] = {"TEMPO", "TONE", "GROOVE", "SYSTEM"};
 static const uint8_t PG_BTN[PG_N] = {BTN_HOME, BTN_SAVE, BTN_SEL, BTN_ENV, BTN_LFO, BTN_SEQ, BTN_EDIT, BTN_GLO};
 static const char *const SECT_NAME[NPAT] = {"INTRO", "VERSE", "CHORUS", "VERSE2", "BRIDGE", "BUILD", "DROP", "OUTRO"};   /* (XENOISE: a song's parts) */
 
-/* ---- the colours. (XENOISE) Two themes, picked on SETTINGS (GLO on MST), kept with JIANT's settings (xj_pref):
+/* ---- the colours. (XENOISE) Themes, picked on MST's SYSTEM page (GLO), kept with JIANT's settings (xj_pref):
  *   COMBAT   the boot's cockpit: pitch black, a bright cyan for what is picked, red for what plays, amber for the rest
- *   CLASSIC  WND-1's: Renoise's dark warm greys, orange for what plays, blue for what is picked, cyan for the chords */
+ *   CLASSIC  WND-1's: Renoise's dark warm greys, orange for what plays, blue for what is picked, cyan for the chords
+ *   the rest from KNF's covers (AIRPUNCHR, CONCRETE, PARTY PEOPLE ..): their colours, the greys mixed from them
+ * (made by a few lines of Python from each cover's base, text and accents). The tracks: the drums one colour, BRK the
+ * brightest, the bass another (red where the cover has one), the keys and the synth a third */
 typedef struct {
     const char *name;
     uint16_t bg, row, beat, panel, inset, txt, note, muted, faint, play, sel, chord, rec, arp;
@@ -38,22 +46,73 @@ typedef struct {
     uint16_t bp, bp2, bpdot;                    /* the blueprints behind the pages */
     uint16_t fbtn, fbtn_top, wkey, wkey_on, wkey_off, bkey_case, bkey_off;
 } wb_theme_t;
-#define WB_NTHEME 2u
+#define WB_NTHEME 13u
 static const wb_theme_t WB_THEMES[WB_NTHEME] = {
-    {"COMBAT", RGB(5, 7, 12), RGB(10, 16, 24), RGB(17, 27, 40), RGB(22, 38, 58), RGB(7, 11, 18), RGB(214, 244, 255),
-     RGB(127, 233, 255), RGB(77, 116, 136), RGB(26, 42, 58), RGB(255, 42, 109), RGB(32, 224, 255), RGB(255, 176, 0),
-     RGB(255, 42, 109), RGB(255, 176, 0),
-     {RGB(255, 42, 109), RGB(255, 42, 109), RGB(255, 42, 109), RGB(255, 176, 0), RGB(32, 224, 255), RGB(32, 224, 255)},
+    {"COMBAT", RGB(5, 7, 12), RGB(10, 16, 24), RGB(17, 27, 40), RGB(22, 38, 58), RGB(7, 11, 18), RGB(214, 244, 255), RGB(127, 233, 255), RGB(77, 116, 136), RGB(26, 42, 58), RGB(255, 42, 109), RGB(32, 224, 255), RGB(255, 176, 0), RGB(255, 42, 109), RGB(255, 176, 0),
+     {RGB(255, 150, 40), RGB(200, 119, 34), RGB(165, 99, 30), RGB(255, 42, 80), RGB(32, 224, 255), RGB(32, 224, 255)},
      {RGB(255, 42, 109), RGB(255, 176, 0), RGB(32, 224, 255), RGB(143, 168, 255)},
      RGB(14, 40, 54), RGB(20, 80, 100), RGB(12, 22, 30),
      RGB(20, 34, 52), RGB(32, 60, 86), RGB(170, 200, 215), RGB(214, 244, 255), RGB(40, 60, 75), RGB(2, 3, 6), RGB(20, 30, 40)},
-    {"CLASSIC", RGB(24, 22, 20), RGB(34, 31, 28), RGB(46, 41, 36), RGB(60, 58, 54), RGB(30, 29, 27), RGB(226, 218, 202),
-     RGB(222, 190, 140), RGB(142, 132, 118), RGB(74, 67, 60), RGB(242, 164, 42), RGB(52, 116, 232), RGB(52, 214, 204),
-     RGB(232, 82, 66), RGB(96, 214, 120),
-     {RGB(238, 142, 42), RGB(238, 142, 42), RGB(238, 142, 42), RGB(52, 214, 204), RGB(84, 146, 244), RGB(84, 146, 244)},
+    {"CLASSIC", RGB(24, 22, 20), RGB(34, 31, 28), RGB(46, 41, 36), RGB(60, 58, 54), RGB(30, 29, 27), RGB(226, 218, 202), RGB(222, 190, 140), RGB(142, 132, 118), RGB(74, 67, 60), RGB(242, 164, 42), RGB(52, 116, 232), RGB(52, 214, 204), RGB(232, 82, 66), RGB(52, 214, 204),
+     {RGB(242, 150, 40), RGB(194, 122, 36), RGB(164, 104, 33), RGB(232, 70, 60), RGB(84, 146, 244), RGB(84, 146, 244)},
      {RGB(240, 92, 80), RGB(244, 196, 64), RGB(96, 214, 120), RGB(84, 152, 244)},
      RGB(40, 52, 74), RGB(58, 78, 116), RGB(36, 38, 44),
      RGB(86, 82, 76), RGB(110, 106, 98), RGB(196, 190, 178), RGB(206, 220, 246), RGB(98, 94, 88), RGB(16, 15, 14), RGB(40, 38, 36)},
+    {"AIRPUNCHR", RGB(8, 40, 48), RGB(20, 52, 60), RGB(32, 65, 72), RGB(50, 93, 101), RGB(5, 26, 31), RGB(210, 245, 248), RGB(188, 239, 244), RGB(119, 153, 158), RGB(52, 85, 92), RGB(210, 44, 84), RGB(90, 214, 224), RGB(160, 232, 238), RGB(210, 44, 84), RGB(160, 232, 238),
+     {RGB(238, 128, 96), RGB(187, 109, 85), RGB(155, 96, 79), RGB(200, 34, 72), RGB(120, 226, 236), RGB(120, 226, 236)},
+     {RGB(210, 44, 84), RGB(160, 232, 238), RGB(90, 214, 224), RGB(150, 230, 236)},
+     RGB(21, 68, 76), RGB(34, 96, 104), RGB(22, 54, 62),
+     RGB(40, 73, 80), RGB(65, 97, 104), RGB(153, 188, 192), RGB(210, 245, 248), RGB(65, 97, 104), RGB(3, 16, 19), RGB(36, 69, 76)},
+    {"CONCRETE", RGB(22, 22, 24), RGB(35, 35, 37), RGB(47, 48, 49), RGB(72, 74, 76), RGB(14, 14, 16), RGB(232, 236, 234), RGB(242, 222, 160), RGB(138, 140, 140), RGB(68, 69, 70), RGB(255, 154, 0), RGB(160, 166, 176), RGB(255, 204, 70), RGB(232, 72, 40), RGB(255, 204, 70),
+     {RGB(255, 154, 0), RGB(204, 125, 5), RGB(171, 106, 9), RGB(232, 72, 40), RGB(196, 202, 212), RGB(196, 202, 212)},
+     {RGB(255, 154, 0), RGB(255, 204, 70), RGB(160, 166, 176), RGB(196, 201, 205)},
+     RGB(44, 45, 48), RGB(66, 68, 73), RGB(37, 37, 39),
+     RGB(56, 56, 58), RGB(81, 82, 83), RGB(173, 176, 175), RGB(232, 236, 234), RGB(81, 82, 83), RGB(9, 9, 10), RGB(51, 52, 53)},
+    {"PARTY PPL", RGB(236, 236, 232), RGB(223, 223, 219), RGB(210, 210, 207), RGB(185, 185, 182), RGB(243, 243, 240), RGB(20, 20, 20), RGB(38, 38, 38), RGB(117, 117, 115), RGB(188, 188, 185), RGB(24, 24, 24), RGB(96, 96, 96), RGB(60, 60, 60), RGB(200, 30, 30), RGB(60, 60, 60),
+     {RGB(30, 30, 30), RGB(75, 75, 74), RGB(104, 104, 103), RGB(200, 30, 30), RGB(110, 110, 110), RGB(110, 110, 110)},
+     {RGB(24, 24, 24), RGB(60, 60, 60), RGB(96, 96, 96), RGB(58, 58, 58)},
+     RGB(214, 214, 210), RGB(191, 191, 188), RGB(221, 221, 217),
+     RGB(201, 201, 198), RGB(176, 176, 173), RGB(80, 80, 79), RGB(20, 20, 20), RGB(176, 176, 173), RGB(47, 47, 46), RGB(206, 206, 202)},
+    {"NAVY TAG", RGB(10, 14, 60), RGB(24, 28, 72), RGB(38, 41, 83), RGB(58, 69, 111), RGB(6, 9, 39), RGB(240, 240, 255), RGB(247, 247, 255), RGB(136, 138, 167), RGB(61, 64, 103), RGB(240, 122, 32), RGB(110, 168, 232), RGB(255, 255, 255), RGB(236, 64, 120), RGB(255, 255, 255),
+     {RGB(240, 122, 32), RGB(189, 98, 38), RGB(157, 83, 42), RGB(236, 64, 120), RGB(110, 168, 232), RGB(110, 168, 232)},
+     {RGB(240, 122, 32), RGB(255, 255, 255), RGB(110, 168, 232), RGB(175, 204, 244)},
+     RGB(26, 39, 88), RGB(42, 63, 115), RGB(26, 30, 74),
+     RGB(47, 50, 91), RGB(74, 77, 115), RGB(176, 177, 200), RGB(240, 240, 255), RGB(74, 77, 115), RGB(4, 6, 24), RGB(42, 46, 87)},
+    {"DUNGEON", RGB(14, 11, 10), RGB(27, 23, 17), RGB(40, 34, 24), RGB(65, 55, 53), RGB(9, 7, 6), RGB(232, 204, 128), RGB(232, 191, 104), RGB(134, 117, 75), RGB(62, 53, 36), RGB(196, 34, 44), RGB(156, 124, 214), RGB(232, 176, 74), RGB(196, 34, 44), RGB(232, 176, 74),
+     {RGB(226, 140, 60), RGB(179, 112, 49), RGB(150, 94, 42), RGB(196, 34, 44), RGB(185, 166, 224), RGB(185, 166, 224)},
+     {RGB(196, 34, 44), RGB(232, 176, 74), RGB(156, 124, 214), RGB(194, 164, 171)},
+     RGB(37, 29, 43), RGB(59, 47, 75), RGB(29, 25, 18),
+     RGB(49, 42, 29), RGB(75, 65, 43), RGB(171, 150, 95), RGB(232, 204, 128), RGB(75, 65, 43), RGB(6, 4, 4), RGB(45, 38, 27)},
+    {"EMBER 25", RGB(26, 30, 44), RGB(38, 42, 55), RGB(49, 53, 67), RGB(72, 76, 90), RGB(17, 20, 29), RGB(220, 224, 232), RGB(236, 219, 182), RGB(133, 137, 147), RGB(69, 73, 85), RGB(245, 162, 26), RGB(150, 158, 176), RGB(255, 212, 120), RGB(210, 76, 40), RGB(255, 212, 120),
+     {RGB(245, 162, 26), RGB(197, 133, 30), RGB(166, 114, 32), RGB(210, 76, 40), RGB(172, 182, 204), RGB(172, 182, 204)},
+     {RGB(245, 162, 26), RGB(255, 212, 120), RGB(150, 158, 176), RGB(185, 191, 204)},
+     RGB(46, 50, 65), RGB(66, 71, 86), RGB(40, 44, 57),
+     RGB(57, 61, 74), RGB(80, 84, 97), RGB(166, 170, 179), RGB(220, 224, 232), RGB(80, 84, 97), RGB(10, 12, 18), RGB(53, 57, 70)},
+    {"WUZUP", RGB(0, 0, 0), RGB(15, 15, 15), RGB(31, 31, 31), RGB(61, 61, 61), RGB(0, 0, 0), RGB(255, 255, 255), RGB(235, 235, 235), RGB(140, 140, 140), RGB(56, 56, 56), RGB(255, 255, 255), RGB(170, 170, 170), RGB(210, 210, 210), RGB(255, 255, 255), RGB(210, 210, 210),
+     {RGB(245, 245, 245), RGB(191, 191, 191), RGB(157, 157, 157), RGB(185, 185, 185), RGB(130, 130, 130), RGB(130, 130, 130)},
+     {RGB(255, 255, 255), RGB(210, 210, 210), RGB(170, 170, 170), RGB(212, 212, 212)},
+     RGB(27, 27, 27), RGB(54, 54, 54), RGB(18, 18, 18),
+     RGB(41, 41, 41), RGB(71, 71, 71), RGB(184, 184, 184), RGB(255, 255, 255), RGB(71, 71, 71), RGB(0, 0, 0), RGB(36, 36, 36)},
+    {"CHAO", RGB(34, 8, 6), RGB(47, 22, 18), RGB(61, 36, 29), RGB(70, 58, 61), RGB(22, 5, 4), RGB(255, 240, 200), RGB(250, 226, 136), RGB(156, 136, 113), RGB(83, 59, 49), RGB(232, 64, 42), RGB(40, 120, 210), RGB(245, 208, 58), RGB(232, 64, 42), RGB(245, 208, 58),
+     {RGB(242, 150, 40), RGB(196, 119, 33), RGB(167, 99, 28), RGB(232, 64, 42), RGB(70, 150, 236), RGB(70, 150, 236)},
+     {RGB(232, 64, 42), RGB(245, 208, 58), RGB(40, 120, 210), RGB(148, 180, 205)},
+     RGB(35, 26, 39), RGB(36, 44, 71), RGB(49, 24, 20),
+     RGB(69, 45, 37), RGB(96, 73, 60), RGB(193, 175, 146), RGB(255, 240, 200), RGB(96, 73, 60), RGB(14, 3, 2), RGB(65, 40, 33)},
+    {"LIME TAG", RGB(8, 10, 8), RGB(22, 25, 22), RGB(35, 39, 35), RGB(51, 73, 67), RGB(5, 6, 5), RGB(235, 255, 235), RGB(244, 255, 244), RGB(133, 145, 133), RGB(58, 64, 58), RGB(184, 240, 0), RGB(62, 216, 200), RGB(255, 255, 255), RGB(184, 240, 0), RGB(255, 255, 255),
+     {RGB(184, 240, 0), RGB(145, 189, 2), RGB(121, 157, 3), RGB(62, 216, 200), RGB(150, 240, 220), RGB(150, 240, 220)},
+     {RGB(184, 240, 0), RGB(255, 255, 255), RGB(62, 216, 200), RGB(148, 236, 218)},
+     RGB(17, 43, 39), RGB(25, 76, 69), RGB(24, 27, 24),
+     RGB(44, 49, 44), RGB(72, 79, 72), RGB(171, 186, 171), RGB(235, 255, 235), RGB(72, 79, 72), RGB(3, 4, 3), RGB(40, 44, 40)},
+    {"PSYKISTA", RGB(30, 16, 70), RGB(43, 29, 77), RGB(56, 43, 85), RGB(72, 69, 109), RGB(20, 10, 46), RGB(245, 240, 192), RGB(245, 240, 192), RGB(148, 139, 137), RGB(77, 65, 97), RGB(168, 240, 176), RGB(96, 166, 230), RGB(245, 240, 192), RGB(168, 240, 176), RGB(245, 240, 192),
+     {RGB(168, 240, 176), RGB(138, 191, 153), RGB(118, 159, 138), RGB(150, 110, 236), RGB(96, 166, 230), RGB(96, 166, 230)},
+     {RGB(168, 240, 176), RGB(245, 240, 192), RGB(96, 166, 230), RGB(170, 203, 211)},
+     RGB(41, 40, 96), RGB(51, 64, 121), RGB(45, 32, 79),
+     RGB(64, 52, 90), RGB(90, 79, 104), RGB(185, 177, 158), RGB(245, 240, 192), RGB(90, 79, 104), RGB(12, 6, 28), RGB(60, 47, 87)},
+    {"REDLINE", RGB(10, 10, 10), RGB(24, 24, 24), RGB(37, 37, 37), RGB(62, 62, 62), RGB(6, 6, 6), RGB(235, 235, 235), RGB(224, 224, 224), RGB(134, 134, 134), RGB(60, 60, 60), RGB(224, 40, 42), RGB(154, 154, 154), RGB(210, 210, 210), RGB(224, 40, 42), RGB(210, 210, 210),
+     {RGB(232, 96, 64), RGB(183, 77, 52), RGB(152, 65, 45), RGB(224, 40, 42), RGB(180, 180, 180), RGB(180, 180, 180)},
+     {RGB(224, 40, 42), RGB(210, 210, 210), RGB(154, 154, 154), RGB(194, 194, 194)},
+     RGB(33, 33, 33), RGB(56, 56, 56), RGB(26, 26, 26),
+     RGB(46, 46, 46), RGB(73, 73, 73), RGB(172, 172, 172), RGB(235, 235, 235), RGB(73, 73, 73), RGB(4, 4, 4), RGB(42, 42, 42)}
 };
 static const wb_theme_t *TH = &WB_THEMES[0];
 #define C_BG (TH->bg)
@@ -102,12 +161,15 @@ static uint8_t led_want[41];
 static uint8_t fx_latch, arp_latch, perf_solo, seq_used;
 static uint32_t page_ms;                        /* when the page opened (its F keys blink a moment) */
 static uint8_t vis_on;                          /* (XENOISE) HOM: the visualizer (xn_vis.c) in place of the tracker */
+static uint8_t hom_edit, home_used;             /* (XENOISE) HOM: HOME again shows NOTE VEL FX AMT; HOME used with a key */
+static uint8_t arr_live, arr_clip = 0xFF;       /* (XENOISE) SEQ: live (SEQ again), the copied slot's pattern */
+static uint32_t arr_knob_ms[4];                 /* (a knob's action once a turn) */
 static void vis_open(void);
 static void vis_step(void);
 static uint8_t sng_taps, sng_fx;                /* (XENOISE) SAV: OCT+ taps counted; the store's last action (its animation) */
 static uint32_t sng_tap_ms, sng_fx_ms;
-static int jam_nav(void) { return (xj_pref() >> 3) & 1u; }   /* SETTINGS: HOM's black keys the tracks and F1..F4 */
-static void theme_apply(void) { TH = &WB_THEMES[(xj_pref() & 7u) % WB_NTHEME]; g_force = 1; }
+static int jam_nav(void) { return (xj_pref() >> 4) & 1u; }   /* SETTINGS: HOM's black keys the tracks and F1..F4 */
+static void theme_apply(void) { TH = &WB_THEMES[(xj_pref() & 15u) % WB_NTHEME]; g_force = 1; }
 static uint32_t fx_rel_ms, arp_rel_ms, seq_down_ms;
 #define LATCH_MS 400u
 #define ARM_MS 8000u                            /* (XENOISE: a question waits 8 s, was 3) */
@@ -365,7 +427,7 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
     track_t *tr = &song.trk[t];
     char *e;
     lab[0] = val[0] = 0;
-    if (page == PG_TRK && vis_on) return 0;    /* (XENOISE: the visualizer: the knobs rest) */
+    if (page == PG_TRK && (vis_on || !hom_edit)) return 0;   /* (XENOISE: the visualizer, or HOM plain: the knobs rest) */
     switch (page) {
     case PG_TRK: {
         cell_t *c = &P()->c[t][cur_row % plen()];
@@ -457,15 +519,15 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
             }
         }
         return 1;
-    case PG_SET: {                              /* (XENOISE) SETTINGS */
+    case PG_MST + 100u: {                       /* (XENOISE) MST's SYSTEM page (below) */
         uint32_t v = xj_pref();
         if (i == 0u) {
             str_cat(lab, "THEME");
-            if (dd) { v = (v & ~7u) | (uint32_t)clampi((int32_t)(v & 7u) + (dd > 0 ? 1 : -1), 0, WB_NTHEME - 1); xj_pref_set(v); theme_apply(); }
+            if (dd) { v = (v & ~15u) | (uint32_t)clampi((int32_t)(v & 15u) + dd, 0, WB_NTHEME - 1); xj_pref_set(v); theme_apply(); }
             str_cat(val, TH->name);
         } else if (i == 1u) {
             str_cat(lab, "BLACK");
-            if (dd) { v = dd > 0 ? v | 8u : v & ~8u; xj_pref_set(v); }
+            if (dd) { v = dd > 0 ? v | 16u : v & ~16u; xj_pref_set(v); }
             str_cat(val, jam_nav() ? "TRACKS" : "PLAY");
         } else return 0;
         return 1;
@@ -496,7 +558,39 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
             str_cat(val, NOTE_NM[song.key % 12u]);
         }
         return 1;
-    case PG_ARR:
+    case PG_ARR: {                              /* (XENOISE) the slot picked (SELECT): K1 copy, K2 paste, K3 insert, K4 outsert;
+                                                 * a turn does it once */
+        static const char *const L[4] = {"COPY", "PASTE", "INSERT", "OUTSRT"};
+        uint32_t n = song.nchain, at = arr_pos < n ? arr_pos : n ? n - 1u : 0u, k;
+        char *q;
+        str_cat(lab, L[i]);
+        if (i == 0u) { q = str_cat(val, "P"); q[0] = (char)('1' + song.chain[at] % NPAT); q[1] = 0; }
+        else if (arr_clip == 0xFF) str_cat(val, "-");
+        else { q = str_cat(val, "P"); q[0] = (char)('1' + arr_clip % NPAT); q[1] = 0; }
+        if (i == 3u) { val[0] = 0; q = fmt_u(str_cat(val, "SLOT "), at + 1u, 0); (void)q; }
+        if (!dd || fm1_ms - arr_knob_ms[i] < 450u) { if (dd) arr_knob_ms[i] = fm1_ms; return 1; }
+        arr_knob_ms[i] = fm1_ms;
+        if (i == 0u) { arr_clip = song.chain[at]; toast("COPIED"); }
+        else if (arr_clip == 0xFF) { toast("COPY A SLOT FIRST (K1)"); return 1; }
+        else if (i == 1u) { song.chain[at] = arr_clip; toast("PASTED"); }
+        else if (i == 2u) {                     /* INSERT: the copy at the slot, the rest moved on */
+            if (n >= 16u) { toast("16 SLOTS AT MOST"); return 1; }
+            for (k = n; k > arr_pos && k > 0u; k--) song.chain[k] = song.chain[k - 1u];
+            song.chain[arr_pos < n ? arr_pos : n] = arr_clip;
+            song.nchain++;
+            toast("INSERTED");
+        } else {                                /* OUTSERT: the slot gone, the rest moved back */
+            if (n <= 1u) { toast("ONE SLOT LEFT"); return 1; }
+            for (k = at; k + 1u < n; k++) song.chain[k] = song.chain[k + 1u];
+            song.nchain--;
+            if (sq_chainpos >= song.nchain) sq_chainpos = 0;
+            if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
+            toast("SLOT OUT, THE REST BACK");
+        }
+        touch();
+        return 1;
+    }
+    case PG_ARR + 100u:                         /* (WND-1's ARR knobs, kept for the PRESETS knob: the slot's pattern) */
         if (i == 0u) {
             str_cat(lab, "PART");
             if (dd) arr_pos = (uint8_t)clampi((int32_t)arr_pos + dd, 0, song.nchain < 16u ? song.nchain : 15);
@@ -554,7 +648,15 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
         }
         return 1;
     case PG_MST:
-        if (sub % 3u == 2u) {
+        if (sub % MST_NSUB == 3u) {             /* (XENOISE) SYSTEM: the theme, HOM's black keys */
+            uint8_t pg = page;
+            int r;
+            page = (uint8_t)(PG_MST + 100u);
+            r = knob(i, dd, lab, val);
+            page = pg;
+            return r;
+        }
+        if (sub % MST_NSUB == 2u) {
             if (i == 1u) {
                 str_cat(lab, "METER");
                 if (dd) { song.meter = (uint8_t)clampi(song.meter + (dd > 0 ? 1 : -1), 0, NMETER - 1); touch(); }
@@ -566,7 +668,7 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
             if (dd) { song.pump = (uint8_t)clampi(song.pump + dd, 0, 80); touch(); }
             e = fmt_u(val, song.pump, 0);
             str_cat(e, "%");
-        } else if (sub % 3u == 0u) {
+        } else if (sub % MST_NSUB == 0u) {
             if (i == 0u) {
                 str_cat(lab, "BPM");
                 if (dd) { song.bpm = (uint8_t)clampi(song.bpm + dd, 50, 200); touch(); }
@@ -636,7 +738,7 @@ static const char *fn_label(uint32_t i, char *buf)
         if (i == 1u) return song.trk[t].solo ? "UNSOLO" : "SOLO";
         return (const char *const[]){"", "", "ALL ON", "CLR TRK"}[i];
     case PG_MST:
-        if (i == 0u) { e = str_cat(buf, "PG "); e = fmt_u(e, sub % 3u + 1u, 0); str_cat(e, "/3"); return buf; }
+        if (i == 0u) { e = str_cat(buf, "PG "); e = fmt_u(e, sub % MST_NSUB + 1u, 0); str_cat(e, "/4"); return buf; }
         if (i == 2u) return sit_on ? "SIT OFF" : "SIT";
         return (const char *const[]){"", "TAP", "", "CLR PAT"}[i];
     }
@@ -843,7 +945,7 @@ static void fn_press(uint32_t i)
         touch();
         break;
     case PG_MST:
-        if (i == 0u) sub = (uint8_t)((sub + 1u) % 3u);
+        if (i == 0u) sub = (uint8_t)((sub + 1u) % MST_NSUB);
         else if (i == 1u) {
             if (ntap && fm1_ms - taps[(ntap - 1u) % 4u] > 2500u) ntap = 0;
             taps[ntap % 4u] = fm1_ms;
@@ -951,6 +1053,14 @@ static void fn_press_now(uint32_t i)            /* (XENOISE) an F button's actio
     arm_ms = fm1_ms;
     fn_press(i);
 }
+static uint32_t live_n(void)                    /* (XENOISE) SEQ LIVE: patterns 1..this (the highest the song plays or has notes in) */
+{
+    uint32_t n = 1, k, t, r;
+    for (k = 0; k < song.nchain; k++) if (song.chain[k] % NPAT + 1u > n) n = song.chain[k] % NPAT + 1u;
+    for (k = n; k < NPAT; k++)
+        for (t = 0; t < NT; t++) for (r = 0; r < NROW; r++) if (song.pat[k].c[t][r].n) { n = k + 1u; t = NT; break; }
+    return n;
+}
 /* ---- the arrangement: the chain of patterns the song plays */
 static void arr_jump(uint32_t pos)              /* play from this part at the end of the pattern */
 {
@@ -988,22 +1098,18 @@ static void arr_launch(uint32_t k)              /* live: a white key on ARR goes
 static void arr_fn(uint32_t i)
 {
     uint32_t k, n = song.nchain;
-    if (i == 0u) {                              /* INSERT: the part again after itself */
-        if (n >= 16u || !n) return;
-        if (arr_pos >= n) arr_pos = (uint8_t)(n - 1u);
-        for (k = n; k > arr_pos + 1u; k--) song.chain[k] = song.chain[k - 1u];
-        song.chain[arr_pos + 1u] = song.chain[arr_pos];
-        song.nchain++;
-        arr_pos++;
-        toast("PART INSERTED");
-    } else if (i == 1u) {                       /* DELETE */
-        if (n <= 1u || arr_pos >= n) return;
-        for (k = arr_pos; k + 1u < n; k++) song.chain[k] = song.chain[k + 1u];
-        song.nchain--;
+    (void)k; (void)n;
+    if (i == 0u) {                              /* (XENOISE) FORM: the next of the forms */
+        int f = form_of();
+        char buf[24];
+        form_set(f < 0 ? 0u : ((uint32_t)f + 1u) % WB_NFORM);
         if (sq_chainpos >= song.nchain) sq_chainpos = 0;
         if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
-        toast("PART DELETED");
-    } else if (i == 2u) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE SEQUENCE"); }
+        buf[0] = 0;
+        str_cat(str_cat(buf, "FORM: "), FORM_NAME[form_of() < 0 ? 0 : form_of()]);
+        toast(buf);
+    } else if (i == 1u) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE SEQUENCE"); }
+    else if (i == 3u) return;
     else {                                      /* (XENOISE) SHUFFLE: another form (a part goes on with a white key) */
         char buf[24];
         form_shuffle();
@@ -1026,6 +1132,8 @@ static void page_go(uint32_t pg)
     arm_f = 0xFF;
     vis_on = 0;
     sng_taps = 0;
+    hom_edit = 0;
+    arr_live = 0;
 }
 static void save_ask(void)                      /* (XENOISE) the SAVE button on SAV: the song to the slot picked, asked first */
 {
@@ -1044,19 +1152,25 @@ static void ui_input(void)
     int32_t d;
     uint32_t t = trk();
     edges |= keys & ~prev_keys;
+    if (b & (1u << BTN_HOME)) home_used = page != PG_TRK;   /* (XENOISE) HOME alone on HOM: the edit mode on, off (its release) */
     /* the pages (SEQ: a tap opens ARR, again goes back; held, it picks patterns) */
     for (i = 0; i < PG_N; i++)
         if (i != PG_ARR && (b & (1u << PG_BTN[i]))) {
             if (fx_latch) { fx_latch = 0; punches_off(); }   /* (XENOISE: a page closes PERFORM) */
             if (page == i && i == PG_SNG) save_ask();     /* (XENOISE) SAVE on SAV: save the song (OCT+ yes, OCT- no) */
             else if (page == i && i == PG_SND) sub = (uint8_t)((sub + 1u) % snd_npages(t));
-            else if (page == i && i == PG_MST) page_go(PG_SET);   /* (XENOISE) GLO again: SETTINGS (MST's pages: F1) */
+            else if (page == i && i == PG_MST) sub = (uint8_t)((sub + 1u) % MST_NSUB);   /* (XENOISE) GLO again: MST's next page */
             else if (page != i) page_go(i);
         }
     if (b & (1u << BTN_SEQ)) { seq_down_ms = fm1_ms; seq_used = 0; }
-    if ((rel & (1u << BTN_SEQ)) && !seq_used && fm1_ms - seq_down_ms < 600u) {
-        if (page == PG_ARR) page_go(prev_page);
+    if ((rel & (1u << BTN_SEQ)) && !seq_used && fm1_ms - seq_down_ms < 600u) {   /* (XENOISE) SEQ, again: LIVE, again: SEQ */
+        if (page == PG_ARR) { arr_live ^= 1u; toast(arr_live ? "LIVE - WHITE KEYS QUEUE" : "SEQUENCE"); }
         else { page_go(PG_ARR); arr_pos = (uint8_t)(sq_play && !song.loop ? sq_chainpos : 0u); }
+    }
+    if ((rel & (1u << BTN_HOME)) && !home_used && page == PG_TRK && !fx_on()) {
+        hom_edit ^= 1u;
+        vis_on = 0;
+        toast(hom_edit ? "EDIT: NOTE VEL FX AMT" : "TRACKER");
     }
     /* (XENOISE) FX and ARP: a tap opens, a tap closes (the page under them stays as it was) */
     if (b & (1u << BTN_FX)) {
@@ -1069,7 +1183,7 @@ static void ui_input(void)
     }
     (void)fx_rel_ms; (void)arp_rel_ms;
     if (b & (1u << BTN_PLAY)) {
-        if (held & (1u << BTN_HOME)) sit_set(!sit_on);
+        if (held & (1u << BTN_HOME)) { home_used = 1; sit_set(!sit_on); }
         else if (sq_play) { sq_req = 2; if (sit_on) sit_set(0); }
         else sq_req = 1;
     }
@@ -1115,6 +1229,26 @@ static void ui_input(void)
                     toast(buf);
                 }
             }
+        } else if (page == PG_ARR) {            /* (XENOISE) OCT+ adds a slot (a pattern the song does not play yet, or the
+                                                 * one picked again), OCT- deletes the last */
+            uint32_t n = song.nchain, q, k2;
+            if (up) {
+                if (n >= 16u) toast("16 SLOTS AT MOST");
+                else {
+                    for (q = 0; q < NPAT; q++) { for (k2 = 0; k2 < n && song.chain[k2] != q; k2++) {} if (k2 == n) break; }
+                    song.chain[n] = (uint8_t)(q < NPAT ? q : song.chain[arr_pos < n ? arr_pos : n - 1u]);
+                    song.nchain++;
+                    arr_pos = (uint8_t)n;
+                    toast("SLOT ADDED");
+                    touch();
+                }
+            } else if (n > 1u) {
+                song.nchain--;
+                if (sq_chainpos >= song.nchain) sq_chainpos = 0;
+                if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
+                toast("LAST SLOT DELETED");
+                touch();
+            }
         } else if (TRK_TYPE[t] == TY_SYNTH) {
             char buf[24];
             pad_oct[t] = (int8_t)clampi(pad_oct[t] + (up ? 1 : -1), -2, 2);
@@ -1141,7 +1275,8 @@ static void ui_input(void)
         uint32_t s0 = sub;
         if (page == PG_SND) { sub = TRK_TYPE[t] == TY_DRUMS && sub >= 2u ? 2u : 0u; knob(0, d, lab, val); sub = (uint8_t)s0; }
         else if (page == PG_SNG) knob(1, d, lab, val);
-        else if (page == PG_CHD || page == PG_ARR) knob(page == PG_ARR ? 1u : 0u, d, lab, val);
+        else if (page == PG_CHD) knob(0u, d, lab, val);
+        else if (page == PG_ARR) { uint8_t pg = page; page = (uint8_t)(PG_ARR + 100u); knob(1u, d, lab, val); page = pg; }
         else {
             uint32_t q = (uint32_t)clampi((int32_t)(sq_play && sq_cue < NPAT ? sq_cue : song.cur) + d, 0, NPAT - 1);
             if (sq_play) sq_cue = (uint8_t)q;
@@ -1164,6 +1299,7 @@ static void ui_input(void)
         if (!down && !up) continue;
         if (bl >= 0 && !bpad) {
             if (!down) continue;
+            if (held & (1u << BTN_HOME)) home_used = 1;
             if (fx_on()) {                      /* PERFORM: mute / solo, F1 which, F3 SIT, F4 all on */
                 if (bl < (int)NT) mute_key((uint32_t)bl);
                 else if (bl == (int)BLK_F1) { perf_solo ^= 1u; toast(perf_solo ? "BLACK KEYS SOLO" : "BLACK KEYS MUTE"); }
@@ -1224,6 +1360,22 @@ static void ui_input(void)
             continue;
         }
         if (page == PG_CHD) { chord_pad((uint32_t)w); continue; }
+        if (page == PG_ARR && arr_live) {        /* (XENOISE) LIVE: the pattern next, looped till another */
+            char buf[24], *q;
+            if ((uint32_t)w >= live_n()) continue;
+            if (sq_play) sq_cue = (uint8_t)w;
+            else song.cur = (uint8_t)w;
+            song.loop = 1;
+            if (cur_row >= plen()) cur_row = 0;
+            buf[0] = 0;
+            q = str_cat(buf, sq_play ? "NEXT: P" : "P");
+            q[0] = (char)('1' + w);
+            q[1] = ' ';
+            q[2] = 0;
+            str_cat(q, SECT_NAME[w]);
+            toast(buf);
+            continue;
+        }
         if (page == PG_ARR) { arr_launch((uint32_t)w); continue; }
         {
             uint32_t n = pad_note(t, (uint32_t)w);
@@ -1472,7 +1624,7 @@ static void draw_top(void)
         uint32_t k;
         g_rect(0, TAB_Y, 240, TOP_H - TAB_Y, C_BG);
         for (k = 0; k < PG_N; k++) {
-            int on = k == (page == PG_SET ? (uint32_t)PG_MST : page) && !fx_on();
+            int on = k == page && !fx_on();
             g_rect((int32_t)k * 30, TAB_Y + 1, 29, 13, on ? C_ORANGE : C_ROW);
             g_text_c((int32_t)k * 30 + 15, TAB_Y + 1, PG_NAME[k], on ? C_BG : C_MUTED, T_CROP | (on ? T_BOLD : 0));
         }
@@ -1527,8 +1679,9 @@ static void draw_grid(void)
     int32_t center = sq_play ? sq_row : cur_row;
     char s[16];
     draw_heads();
-    for (j = 0; j < NVIS; j++) {
-        int32_t top = clampi(center - NVIS / 2, 0, (int32_t)L > NVIS ? (int32_t)L - NVIS : 0);   /* (no blank rows above 00) */
+    int32_t nvis = page == PG_TRK && !hom_edit && !fx_on() ? 12 : NVIS;   /* (XENOISE: HOM plain: three rows more) */
+    for (j = 0; j < (uint32_t)nvis; j++) {
+        int32_t top = clampi(center - nvis / 2, 0, (int32_t)L > nvis ? (int32_t)L - nvis : 0);   /* (no blank rows above 00) */
         int32_t r = top + (int32_t)j, y = GRID_Y + (int32_t)j * ROW_H;
         int play = sq_play && r == sq_row, cur = r == cur_row, skip = B < 16u && (uint32_t)(r & 15) >= B;
         if (!g_vis(y, ROW_H)) continue;
@@ -1765,37 +1918,65 @@ static void draw_sng(void)
         g_text_c(120, TOP_H + 102, arm_f == 3u ? "OCT- AGAIN: DELETE  OCT+: NO" : "OCT+: YES   OCT-: NO", blink ? C_TXT : C_MUTED, T_CROP);
     }
 }
-/* (XENOISE) SETTINGS: the theme (its colours shown), what HOM's black keys do; what this is */
-static void draw_set(void)
+/* (XENOISE) MST: the settings, every page of them at once (TEMPO, TONE, GROOVE, SYSTEM), the one the knobs are on lit
+ * (GLO: the next): each a title, the knobs' names, their values */
+static void draw_mst(void)
 {
-    uint32_t k, now = fm1_ms, i;
+    uint32_t g, i, s0 = sub, now = fm1_ms;
     uint16_t holo = C_BLUE;
-    char s[48];
+    char lab[16], val[24];
     g_rect(0, TOP_H, 240, BODY_H, C_BG);
     bp_sheet(TOP_H, BODY_H);
-    g_text(6, TOP_H + 3, "SETTINGS", holo, T_CROP | T_BOLD);
-    g_text(82, TOP_H + 3, "// SYSTEM", C_MUTED, T_CROP);
-    g_rect(0, TOP_H + 17, 240, 1, g_mix(C_BG, holo, 120));
-    g_rect((int32_t)(now / 6u % 260u) - 20, TOP_H + 17, 20, 1, C_TXT);
-    for (k = 0; k < WB_NTHEME; k++) {           /* the themes: a strip of each one's colours, the one on framed */
-        const wb_theme_t *th = &WB_THEMES[k];
-        const uint16_t sw[7] = {th->bg, th->panel, th->txt, th->play, th->sel, th->chord, th->trk[3]};
-        int32_t y = TOP_H + 24 + (int32_t)k * 30;
-        int on = th == TH;
-        g_rect(6, y, 228, 26, on ? g_mix(C_BG, holo, 50) : C_ROW);
-        if (on) g_frame(6, y, 228, 26, holo);
-        g_text(12, y + 7, th->name, on ? C_TXT : C_MUTED, T_CROP | (on ? T_BOLD : 0));
-        for (i = 0; i < 7u; i++) {
-            g_rect(110 + (int32_t)i * 17, y + 5, 15, 16, th->panel);
-            g_rect(111 + (int32_t)i * 17, y + 6, 13, 14, sw[i]);
+    for (g = 0; g < MST_NSUB; g++) {
+        int32_t y = TOP_H + 1 + (int32_t)g * 35;
+        int on = g == s0 % MST_NSUB;
+        g_rect(2, y, 236, 34, on ? g_mix(C_BG, holo, 46) : C_ROW);
+        if (on) {
+            g_frame(2, y, 236, 34, holo);
+            g_rect(2 + (int32_t)(now / 6u % 236u), y + 1, 2, 32, g_mix(C_BG, holo, 110));   /* a scan along it */
         }
+        g_text(6, y + 10, MST_SUB_NAME[g], on ? holo : C_MUTED, T_CROP | T_BOLD);   /* the title, left */
+        sub = (uint8_t)g;
+        {
+            uint32_t nk = 0;
+            int32_t cw;
+            for (i = 0; i < 4u; i++) nk += (uint32_t)knob(i, 0, lab, val);
+            cw = 180 / (int32_t)(nk ? nk : 1u);  /* (the cells share the width: SYSTEM's two, wide) */
+            for (i = 0; i < 4u; i++) {
+                int32_t x = 58 + (int32_t)i * cw;
+                if (!knob(i, 0, lab, val)) continue;
+                lab[cw / 8 > 15 ? 15 : cw / 8] = 0;
+                val[cw / 8 > 15 ? 15 : cw / 8] = 0;
+                if (on) g_rect(x, y + 4, 2, 26, KNOB_C[i]);
+                g_text(x + 4, y + 3, lab, C_MUTED, T_CROP);
+                g_text(x + 4, y + 18, val, on ? C_TXT : g_mix(C_BG, C_TXT, 170), T_CROP);
+            }
+        }
+        sub = (uint8_t)s0;
     }
-    s[0] = 0;
-    str_cat(str_cat(s, "BLACK KEYS ON HOM: "), jam_nav() ? "TRACKS" : "PLAY");
-    g_text(6, TOP_H + 88, s, C_TXT, T_CROP);
-    g_text(6, TOP_H + 102, jam_nav() ? "BLACK 1-6 TRACKS, 8-11 F1-F4" : "GHOSTS, PASSING NOTES;", C_MUTED, T_CROP);
-    g_text(6, TOP_H + 115, jam_nav() ? "(AS WND-1 HAD THEM)" : "HOME HELD: TRACKS, F1-F4", C_MUTED, T_CROP);
-    g_text(6, TOP_H + 131, "XENOISE MK-I  ON JIANT FM", g_mix(C_BG, holo, 150), T_CROP);
+}
+/* (XENOISE) SEQ LIVE: the patterns as pads, 1 .. the last the song has; the one playing lit, the one queued blinking */
+static void draw_live(void)
+{
+    uint32_t k, n = live_n(), cur = sq_play ? sq_pi : song.cur, now = fm1_ms;
+    char s[8];
+    g_rect(0, TOP_H, 240, BODY_H, C_BG);
+    bp_sheet(TOP_H, BODY_H);
+    g_text(6, TOP_H + 3, "LIVE", C_ORANGE, T_CROP | T_BOLD);
+    g_text(48, TOP_H + 3, song.loop ? "LOOPING A PATTERN" : "THE SEQUENCE", C_MUTED, T_CROP);
+    for (k = 0; k < NPAT; k++) {
+        int32_t x = 3 + (int32_t)(k % 4u) * 59, y = TOP_H + 18 + (int32_t)(k / 4u) * 62;
+        int on = k < n, play = on && k == cur && sq_play, cue = on && sq_play && sq_cue == k && k != cur;
+        uint16_t c = play ? C_ORANGE : cue && (now / 150u) & 1u ? C_BLUE : on ? C_PANEL : C_ROW;
+        g_rect(x, y, 56, 58, c);
+        if (!on) continue;
+        if (k == cur && !sq_play) g_frame(x, y, 56, 58, C_BLUE);
+        s[0] = (char)('1' + k);
+        s[1] = 0;
+        g_text_c(x + 28, y + 12, s, play ? C_BG : C_TXT, T_BOLD);
+        g_text_c(x + 28, y + 36, SECT_NAME[k], play ? C_BG : C_MUTED, T_CROP);
+        if (play) g_rect(x + 4, y + 52, (int32_t)((uint32_t)sq_row * 48u / (plen() ? plen() : 16u)), 3, C_BG);   /* how far in */
+    }
 }
 static void draw_chd(void)
 {
@@ -1860,33 +2041,35 @@ static void draw_snd(void)
     str_cat(e, "  EDIT");
     g_text(6, TOP_H + 112, s, C_MUTED, T_CROP);
 }
+static int32_t info_y = INFO_Y;                 /* (XENOISE: lower on HOM plain, the grid longer) */
 static void draw_info(void)
 {
     char s[48], *e;
     int32_t pd;
     char nm[8], rom[8];
     const char *hint = 0;
-    g_rect(0, INFO_Y, 240, KNOB_Y - INFO_Y, C_BG);
-    g_rect(0, INFO_Y, 240, 1, C_FAINT);
-    if (toast_ms && fm1_ms - toast_ms < 1800u) { g_text(5, INFO_Y + 2, toast_s, C_ORANGE, T_CROP); return; }
+    g_rect(0, info_y, 240, (info_y == INFO_Y ? KNOB_Y : 240) - info_y, C_BG);
+    g_rect(0, info_y, 240, 1, C_FAINT);
+    if (toast_ms && fm1_ms - toast_ms < 1800u) { g_text(5, info_y + 2, toast_s, C_ORANGE, T_CROP); return; }
     if (fx_on()) hint = "WHITE: PUNCH  BLACK: TRACKS";
     else if ((fm1_in.buttons >> BTN_SEQ) & 1u) hint = "WHITE 1-8: PATTERN  9: LOOP";
     else if (arp_on()) hint = "TAP A PAD: REPEAT  ARP: OFF";
-    if (hint) { g_text(5, INFO_Y + 2, hint, C_CYAN, T_CROP); return; }
+    if (hint) { g_text(5, info_y + 2, hint, C_CYAN, T_CROP); return; }
     s[0] = 0;
-    str_cat(s, page == PG_TRK && !jam_nav() ? "HOME+BLACK: TRACK, F" : PG_HINT[page]);
+    str_cat(s, page == PG_TRK ? (!hom_edit ? "HOME: NOTE VEL FX AMT" : !jam_nav() ? "HOME+BLACK: TRACK, F" : PG_HINT[page])
+                              : page == PG_ARR && arr_live ? "WHITE KEYS: QUEUE" : PG_HINT[page]);
     s[22] = 0;
-    g_text(5, INFO_Y + 2, s, C_MUTED, T_CROP);
+    g_text(5, info_y + 2, s, C_MUTED, T_CROP);
     pd = prog_deg(sq_play ? sq_row : cur_row);
     chord_name(pd, nm, rom);
     s[0] = 0;
     e = str_cat(s, nm);
     e = str_cat(e, " ");
     str_cat(e, rom);
-    g_text(236 - g_text_w(s), INFO_Y + 2, s, C_CYAN, T_CROP | T_BOLD);
+    g_text(236 - g_text_w(s), info_y + 2, s, C_CYAN, T_CROP | T_BOLD);
 }
 static const char *perf_fn(uint32_t i) { return (const char *const[]){perf_solo ? "SOLO" : "MUTE", "", sit_on ? "SIT OFF" : "SIT", "ALL ON"}[i]; }
-static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"INSERT", "DELETE", song.loop ? "SEQ" : "LOOP", "SHUFFLE"}[i]; }
+static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"FORM", song.loop ? "SEQ" : "LOOP", "SHUFFLE", ""}[i]; }
 static void draw_knobs(void)
 {
     uint32_t i;
@@ -1922,13 +2105,20 @@ static void draw_all(void)
     g_rect(0, 0, 240, 240, C_BG);
     draw_top();
     if (!fx_on() && page == PG_TRK && vis_on) { vis_draw(); return; }
+    if (!fx_on() && page == PG_TRK && !hom_edit) {   /* (XENOISE) HOM plain: the grid, the info line, no knobs */
+        draw_grid();
+        info_y = 222;
+        draw_info();
+        info_y = INFO_Y;
+        return;
+    }
     if (fx_on()) draw_perform();
     else switch (page) {
-    case PG_SET: draw_set(); break;
+    case PG_MST: draw_mst(); break;
     case PG_SNG: draw_sng(); break;
     case PG_CHD: draw_chd(); break;
     case PG_SND: draw_snd(); break;
-    case PG_ARR: draw_arr(); break;
+    case PG_ARR: if (arr_live) draw_live(); else draw_arr(); break;
     default: draw_grid(); break;
     }
     draw_info();

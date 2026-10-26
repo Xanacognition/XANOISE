@@ -528,6 +528,11 @@ static void song_new(uint32_t gi)
         }
     }
     if (g->nsyn) sound_patch(T_SYN, g->syn[rnd(g->nsyn)]);
+    if (g->space >= 85u) {                      /* (XENOISE) the most spacious genres: their tracks deep in the reverb and the
+                                                 * delay (a dreamscape: the bell's echoes, the pads' wash; the drums further off) */
+        static const uint8_t REV[NT] = {35, 20, 40, 12, 60, 75}, DLY[NT] = {10, 0, 15, 0, 40, 25};
+        for (t = 0; t < NT; t++) { song.trk[t].rev = REV[t]; song.trk[t].dly = DLY[t]; }
+    }
     song.trk[T_BRK].p[PB_SRC] = g->nbrk ? g->brk[rnd(g->nbrk)] : 0;
     song.trk[T_KEY].p[PY_CHORD] = g->chords ? (int16_t)(3 + rnd(2)) : 0;
     song.trk[T_SYN].p[PY_CHORD] = g->chords ? 0 : (int16_t)(2 + rnd(3));

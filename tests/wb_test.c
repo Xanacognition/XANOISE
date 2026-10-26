@@ -103,15 +103,53 @@ int main(void)
         check("  left again: the tracker, SYN", !vis_on && sel_trk == NT - 1u);
         sel_trk = (uint8_t)s0;
     }
-    {   /* (XENOISE) SETTINGS: GLO twice; the theme kept in JIANT's settings */
-        tap(B_GLO); tap(B_GLO);
-        check("GLO, GLO: SETTINGS (MST's tab lit)", page == PG_SET);
-        web_enc(EN_K1, 1); run_ms(60);
-        check("  K1: the theme CLASSIC, kept in the settings' byte", TH == &WB_THEMES[1] && (xn_prefs & 7u) == 1u);
-        web_enc(EN_K1, -1); run_ms(60);
-        check("  back: COMBAT (the default)", TH == &WB_THEMES[0] && (xn_prefs & 7u) == 0u);
+    {   /* (XENOISE) MST the settings: GLO steps its pages; SYSTEM's theme kept in JIANT's settings */
         tap(B_GLO);
-        check("  GLO: MST again", page == PG_MST);
+        check("GLO: MST, its TEMPO page", page == PG_MST && sub == 0u);
+        tap(B_GLO); tap(B_GLO); tap(B_GLO);
+        check("  GLO x3 more: SYSTEM", page == PG_MST && sub == 3u);
+        web_enc(EN_K1, 1); run_ms(60);
+        check("  K1: the theme CLASSIC, kept in the settings' byte", TH == &WB_THEMES[1] && (xn_prefs & 15u) == 1u);
+        web_enc(EN_K1, 12); run_ms(60);
+        check("  all the way: the last of the covers' themes", TH == &WB_THEMES[WB_NTHEME - 1u]);
+        web_enc(EN_K1, -20); run_ms(60);
+        check("  back: COMBAT (the default)", TH == &WB_THEMES[0] && (xn_prefs & 15u) == 0u);
+        tap(B_GLO);
+        check("  GLO: round to TEMPO", sub == 0u);
+    }
+    {   /* (XENOISE) HOM: the tracker alone; HOME again: the cell's knobs; again: alone */
+        tap(B_HOME);
+        check("HOM: plain (the knobs rest)", page == PG_TRK && !hom_edit);
+        tap(B_HOME);
+        check("  HOME again: NOTE VEL FX AMT", hom_edit && !strcmp(knob_lab[0], "") == 0);
+        tap(B_HOME);
+        check("  again: plain", !hom_edit);
+    }
+    {   /* (XENOISE) SEQ: copy, paste, insert, outsert, add, delete; SEQ again: LIVE, the white keys queue */
+        uint32_t n0;
+        tap(B_SEQ);
+        check("SEQ: the sequence", page == PG_ARR && !arr_live);
+        arr_pos = 2; n0 = wb_song.nchain;
+        web_enc(EN_K1, 1); run_ms(600);
+        check("  K1: copied the slot's pattern", arr_clip == wb_song.chain[2]);
+        arr_pos = 0;
+        web_enc(EN_K3, 1); run_ms(600);
+        check("  K3 at slot 1: inserted, the rest moved on", wb_song.nchain == n0 + 1u && wb_song.chain[0] == arr_clip);
+        web_enc(EN_K4, 1); run_ms(600);
+        check("  K4: outserted, the rest moved back", wb_song.nchain == n0 && wb_song.chain[0] == S_INTRO);
+        arr_pos = 1;
+        web_enc(EN_K2, 1); run_ms(600);
+        check("  K2 at slot 2: pasted", wb_song.chain[1] == arr_clip);
+        tap(B_OCTUP);
+        check("  OCT+: a slot added", wb_song.nchain == n0 + 1u);
+        tap(B_OCTDN);
+        check("  OCT-: the last deleted", wb_song.nchain == n0);
+        tap(B_SEQ);
+        check("  SEQ again: LIVE", arr_live);
+        web_keys(1u << KEY_OF_WHITE[2]); run_ms(80); web_keys(0); run_ms(80);
+        check("  LIVE, white 3: pattern 3, looped", wb_song.cur == 2u && wb_song.loop);
+        wb_song.loop = 0;
+        tap(B_HOME);
     }
     {   /* (XENOISE) SAV: K3 save, K4 load (OCT+ yes, OCT- no); OCT- deletes (again: sure); OCT+ a new empty song, x4 a
          * generated one */
@@ -203,6 +241,24 @@ int main(void)
         wb_song.age = wb_song.crush = 0;
         tap(B_PLAY);
         run_ms(3000);
+    }
+    if (getenv("WB_RENDER")) {   /* a genre's new song, 30 s of it from its first part (WB_RENDER=genre): build/host/wb_genre.wav */
+        static int16_t w2[44100 * 30 * 2];
+        uint32_t n2 = 0, j;
+        float pk;
+        song_new((uint32_t)atoi(getenv("WB_RENDER")));
+        run_ms(500);
+        tap(B_PLAY);
+        for (j = 0; j < 30u; j++) {
+            static int16_t w1[44100 * 8 * 2];
+            uint32_t n1 = 0;
+            rms_of(1000, &pk, w1, &n1);
+            memcpy(w2 + 2u * n2, w1, n1 * 4u);
+            n2 += n1;
+        }
+        write_wav("build/host/wb_genre.wav", w2, n2);
+        printf("wb:   %s, %s: 30 s written to build/host/wb_genre.wav\n", WB_GENRES[wb_song.genre].wb_name, wb_song.wb_name);
+        tap(B_PLAY);
     }
     if (getenv("WB_PER")) {   /* debug: PER alone */
         uint32_t j, w1 = 0, l; float pk;

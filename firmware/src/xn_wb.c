@@ -95,8 +95,8 @@ static void xj_tone(uint32_t jt, int32_t cut, int32_t glide)   /* the part's fil
 /* ---- (XENOISE) SETTINGS (wb_ui.c PG_SET), in a byte of JIANT's settings no engine uses (favorites.factory[15][31]:
  * settings_persist.c, "the layers seen", unused since 0.9.5; 0 in every older setting = each one's default), saved
  * with them (settings_save: written by settings_poll when it changed):
- *   bits 0-2  the theme (0 COMBAT, 1 CLASSIC)
- *   bit 3     HOM's black keys: 0 play (HOME held: the tracks and F1..F4), 1 the tracks and F1..F4 as WND-1 had them */
+ *   bits 0-3  the theme (wb_ui.c WB_THEMES: 0 COMBAT, 1 CLASSIC, KNF's covers after them)
+ *   bit 4     HOM's black keys: 0 play (HOME held: the tracks and F1..F4), 1 the tracks and F1..F4 as WND-1 had them */
 #define xn_prefs (favorites.factory[15][31])
 static uint32_t xj_pref(void) { return xn_prefs; }
 static int32_t xj_sin(uint32_t a16) { return bg_sin(a16); }   /* sine of a 16-bit angle, Q15 (the visualizer) */
