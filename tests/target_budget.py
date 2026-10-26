@@ -127,6 +127,8 @@ def main():
             if r["cost"] > b * (1 + TOL):
                 state = f"OVER BUDGET (+{(r['cost'] / b - 1) * 100:.0f} %, limit +{TOL * 100:.0f} %)"
                 fail += 1
+                called = sorted({m.group(1) for _, t in fns[n] for m in [re.match(r"call\s.*?<\s*([A-Za-z_][\w.]*)", t)] if m})
+                print(f"target:   {n} calls: {' '.join(called) or '-'} (what it no longer calls was inlined into it)")
             elif r["cost"] < b * (1 - TOL):
                 state = f"note: {(r['cost'] / b - 1) * 100:.0f} % (BUDGET_UPDATE=1 to keep it)"
         print(f"target: {n:15s} {r['insns']:5d} instructions, {r['loop']:4d} in loops, {r['div']} divides, "
