@@ -81,6 +81,66 @@ int main(void)
               ok && differ >= 190u);
         form_set(0);
     }
+    {   /* (XENOISE) HOM's black keys play; HOME held: the tracks. The track knob: BRK .. SYN, past SYN the visualizer */
+        uint32_t c0 = xj_count[1], s0 = sel_trk, kb = KEY_OF_BLACK[0];
+        sel_trk = T_KIK;
+        web_keys(1u << kb); run_ms(80); web_keys(0); run_ms(80);
+        check("HOM: a black key plays (a ghost on KIK), the track stays", xj_count[1] > c0 && sel_trk == T_KIK);
+        web_buttons(1u << B_HOME); run_ms(30);
+        web_keys(1u << KEY_OF_BLACK[3]); run_ms(60); web_keys(0); run_ms(30);
+        web_buttons(0); run_ms(80);
+        check("  HOME held + black 4: the track BAS", sel_trk == T_BAS);
+        sel_trk = 0;
+        web_enc(EN_ALGO, -1); run_ms(60);
+        check("the track knob left of BRK: BRK (no wrap)", sel_trk == 0u && !vis_on);
+        web_enc(EN_ALGO, 9); run_ms(60);
+        check("  right past SYN: the visualizer", sel_trk == NT - 1u && vis_on);
+        tap(B_PLAY); run_ms(9000);
+        printf("wb:   the visualizer, 9 s of the song: wave %u, kills %u, shield %d\n", vis_wave, vis_kills, vis_shield);
+        check("  playing: waves come, the tracks' hits shoot them down", vis_wave >= 1u && vis_kills >= 1u);
+        tap(B_PLAY); run_ms(500);
+        web_enc(EN_ALGO, -1); run_ms(60);
+        check("  left again: the tracker, SYN", !vis_on && sel_trk == NT - 1u);
+        sel_trk = (uint8_t)s0;
+    }
+    {   /* (XENOISE) SETTINGS: GLO twice; the theme kept in JIANT's settings */
+        tap(B_GLO); tap(B_GLO);
+        check("GLO, GLO: SETTINGS (MST's tab lit)", page == PG_SET);
+        web_enc(EN_K1, 1); run_ms(60);
+        check("  K1: the theme CLASSIC, kept in the settings' byte", TH == &WB_THEMES[1] && (xn_prefs & 7u) == 1u);
+        web_enc(EN_K1, -1); run_ms(60);
+        check("  back: COMBAT (the default)", TH == &WB_THEMES[0] && (xn_prefs & 7u) == 0u);
+        tap(B_GLO);
+        check("  GLO: MST again", page == PG_MST);
+    }
+    {   /* (XENOISE) SAV: K3 save, K4 load (OCT+ yes, OCT- no); OCT- deletes (again: sure); OCT+ a new empty song, x4 a
+         * generated one */
+        char nm[16];
+        tap(B_SAVE);
+        slot_sel = 5;
+        web_enc(EN_K3, 1); run_ms(60);
+        check("SAV K3: SAVE asked", arm_f == 0u);
+        tap(B_OCTUP);
+        check("  OCT+: saved to slot 5", slot_ok[5] != 0);
+        memcpy(nm, wb_song.wb_name, 16);
+        web_enc(EN_K4, 1); run_ms(60);
+        tap(B_OCTDN);
+        check("  K4 then OCT-: not loaded (the question gone)", arm_f == 0xFF);
+        tap(B_OCTUP); run_ms(900);
+        check("  OCT+ a tap: a new empty song", !strcmp(wb_song.wb_name, "EMPTY SONG"));
+        slot_sel = 5;
+        web_enc(EN_K4, 1); run_ms(60); tap(B_OCTUP);
+        check("  K4, OCT+: the song back from slot 5", !memcmp(wb_song.wb_name, nm, 15));
+        tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP);
+        check("  OCT+ four times: GENERATE asked", arm_f == 1u);
+        tap(B_OCTUP);
+        check("  OCT+: a new song, the parts in a form", memcmp(wb_song.wb_name, nm, 15) && strcmp(wb_song.wb_name, "EMPTY SONG") && form_of() == 0);
+        tap(B_OCTDN);
+        check("  OCT-: DELETE asked", arm_f == 3u && slot_ok[5]);
+        tap(B_OCTDN);
+        check("  OCT- again: slot 5 deleted", !slot_ok[5]);
+        tap(B_HOME);
+    }
     tap(B_FX);
     check("FX: a tap opens PERFORM, it stays", wb_fx_on());
     tap(B_FX);

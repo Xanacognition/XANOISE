@@ -1,0 +1,356 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* XENOISE: the visualizer (HOM, the track scrolled right past SYN; back left: SYN again). A mech's cockpit, first
+ * person; the song is its fight. Each track fires its own weapon on its hits (the sequencer's trig_ms, flash_ms):
+ *   KIK  the left cannon     PER  the right cannon     BRK  the chin gun (a burst; the cockpit shakes)
+ *   BAS  a missile           KEY / SYN  a laser (at what flies)
+ * The enemies (walkers, tanks, gunships, drones) come in a wave on every bar line while it plays: more in a CHORUS,
+ * the most in a DROP (a gunship leads it), one at a time in an INTRO or OUTRO; stopped, they patrol and nothing fires.
+ * The ground runs at the tempo. What reaches the mech takes its shield (red at the edges); it comes back by itself.
+ * The state: a few small arrays, stepped once a frame (vis_step, the main loop); drawn band by band (vis_draw, the
+ * same every band: nothing random in it). World units: 1/16 m; the view: x right, h up, z ahead. */
+
+#define VIS_Y0 TOP_H                            /* the view: from under the tabs to the screen's foot */
+#define VIS_HOR (TOP_H + 70)                    /* the horizon */
+#define VIS_F 150                               /* the lens: px a world unit at depth 1 */
+#define VIS_CAMH 40                             /* the eyes, 2.5 m up */
+#define VIS_ZFAR 1440                           /* 90 m: where they come from */
+#define VIS_ZNEAR 96                            /* 6 m: where they reach the mech */
+#define VIS_NE 12u
+#define VIS_NS 10u
+#define VIS_NB 12u
+enum { VE_WALKER, VE_TANK, VE_SHIP, VE_DRONE };
+enum { VW_LEFT, VW_RIGHT, VW_CHIN, VW_MISSILE, VW_LASER };
+typedef struct { uint8_t on, type, hp, pad; int32_t x, h, z; uint32_t hit_ms, born; } vis_en_t;
+typedef struct { uint8_t on, kind; int32_t x, h, z; uint32_t t0; } vis_shot_t;
+typedef struct { uint8_t on, big; int32_t x, h, z; uint32_t t0; } vis_boom_t;
+static vis_en_t vis_en[VIS_NE];
+static vis_shot_t vis_sh[VIS_NS];
+static vis_boom_t vis_bm[VIS_NB];
+static uint8_t vis_on, vis_wave_row = 0xFF;
+static uint32_t vis_rnd_s = 0x2545F491u, vis_ms, vis_scroll, vis_seen[NT], vis_kills, vis_wave, vis_shake_ms, vis_dmg_ms,
+                vis_fire_ms[5], vis_patrol_ms;
+static int32_t vis_shield = 100;
+
+static uint32_t vis_rnd(uint32_t n)
+{
+    vis_rnd_s ^= vis_rnd_s << 13;
+    vis_rnd_s ^= vis_rnd_s >> 17;
+    vis_rnd_s ^= vis_rnd_s << 5;
+    return n ? (vis_rnd_s >> 8) % n : 0u;
+}
+static const char *vis_section(void)
+{
+    uint32_t pi = sq_play && !song.loop && song.nchain ? song.chain[sq_chainpos % song.nchain] : song.cur;
+    return SECT_NAME[pi % NPAT];
+}
+static void vis_spawn(uint32_t type)
+{
+    uint32_t i;
+    vis_en_t *e;
+    for (i = 0; i < VIS_NE && vis_en[i].on; i++) {}
+    if (i == VIS_NE) return;
+    e = &vis_en[i];
+    e->on = 1;
+    e->type = (uint8_t)type;
+    e->hp = (uint8_t)(type == VE_SHIP ? 9 : type == VE_TANK ? 4 : type == VE_WALKER ? 3 : 1);
+    e->x = (int32_t)vis_rnd(800) - 400;
+    e->z = VIS_ZFAR - (int32_t)vis_rnd(320);
+    e->h = type == VE_SHIP ? 140 + (int32_t)vis_rnd(80) : type == VE_DRONE ? 60 + (int32_t)vis_rnd(60) : 0;
+    e->hit_ms = 0;
+    e->born = vis_ms;
+}
+static void vis_boom(int32_t x, int32_t h, int32_t z, uint32_t at, int big)
+{
+    uint32_t i, old = 0;
+    for (i = 0; i < VIS_NB; i++) {
+        if (!vis_bm[i].on) break;
+        if (vis_bm[i].t0 < vis_bm[old].t0) old = i;
+    }
+    if (i == VIS_NB) i = old;
+    vis_bm[i].on = 1;
+    vis_bm[i].big = (uint8_t)big;
+    vis_bm[i].x = x;
+    vis_bm[i].h = h + (big ? 8 : 16);
+    vis_bm[i].z = z;
+    vis_bm[i].t0 = at;
+}
+/* a weapon fires: at the nearest enemy it suits (lasers at what flies, cannons at what walks), its damage at once, the
+ * explosion when the round gets there */
+static void vis_fire(uint32_t kind)
+{
+    static const uint8_t DMG[5] = {2, 2, 1, 4, 2};
+    uint32_t i, best = VIS_NE, travel = kind == VW_MISSILE ? 260u : kind == VW_LASER ? 40u : 110u;
+    int32_t bz = 0x7FFFFFFF;
+    vis_shot_t *s = 0;
+    for (i = 0; i < VIS_NE; i++) {
+        const vis_en_t *e = &vis_en[i];
+        int air = e->type == VE_SHIP || e->type == VE_DRONE;
+        int32_t z;
+        if (!e->on || e->z > VIS_ZFAR * 2 / 5) continue;   /* (in range: near enough to see go) */
+        z = e->z + (kind == VW_LASER ? (air ? 0 : 2000) : kind == VW_MISSILE ? (e->type == VE_SHIP ? -400 : 0) : (air ? 600 : 0));
+        if (z < bz) { bz = z; best = i; }
+    }
+    for (i = 0; i < VIS_NS && vis_sh[i].on; i++) {}
+    if (i < VIS_NS) s = &vis_sh[i];
+    vis_fire_ms[kind] = vis_ms;
+    if (kind == VW_CHIN) vis_shake_ms = vis_ms;
+    if (s) {
+        s->on = 1;
+        s->kind = (uint8_t)kind;
+        s->t0 = vis_ms;
+    }
+    if (best == VIS_NE) {                       /* nothing there: a round into the distance */
+        if (s) { s->x = ((int32_t)vis_rnd(200) - 100); s->h = 30; s->z = VIS_ZFAR; }
+        return;
+    }
+    {
+        vis_en_t *e = &vis_en[best];
+        if (s) { s->x = e->x; s->h = e->h + 20; s->z = e->z; }
+        e->hit_ms = vis_ms + travel;
+        if (e->hp > DMG[kind]) { e->hp = (uint8_t)(e->hp - DMG[kind]); vis_boom(e->x, e->h, e->z, vis_ms + travel, 0); return; }
+        e->on = 0;
+        vis_kills++;
+        vis_boom(e->x, e->h, e->z, vis_ms + travel, 1);
+    }
+}
+
+/* once a frame (the main loop, while it shows): time, the ground, the waves, the hits, what reaches the mech */
+static void vis_step(void)
+{
+    static const uint8_t WEAPON[NT] = {VW_CHIN, VW_LEFT, VW_RIGHT, VW_MISSILE, VW_LASER, VW_LASER};
+    uint32_t now = fm1_ms, dt = vis_ms ? now - vis_ms : 33u, t, i;
+    int32_t speed = (int32_t)(song.bpm ? song.bpm : 120u);   /* the ground: 6 m a beat */
+    if (vis_ms && dt < 30u) return;             /* (a step a frame: the main loop runs every 4 ms, too fine to move by) */
+    if (dt > 100u) dt = 100u;
+    vis_ms = now;
+    vis_scroll += dt * (uint32_t)speed * 96u / 60000u;
+    if (sq_play) {
+        uint32_t row = sq_row, bar = (row / 16u) & 0xFFu;
+        if (vis_wave_row == 0xFF || (row % 16u == 0u && bar != vis_wave_row)) {   /* a wave on the bar line */
+            const char *sec = vis_section();
+            uint32_t n = sec[0] == 'D' ? 4u : sec[0] == 'C' ? 3u : sec[0] == 'I' || sec[0] == 'O' || (sec[0] == 'B' && sec[1] == 'R') ? 1u : 2u;
+            vis_wave_row = (uint8_t)bar;
+            vis_wave++;
+            if (sec[0] == 'D' && !vis_rnd(2)) vis_spawn(VE_SHIP);
+            for (i = 0; i < n; i++) vis_spawn((const uint8_t[]){VE_WALKER, VE_TANK, VE_DRONE, VE_WALKER, VE_DRONE}[vis_rnd(5)]);
+        }
+        for (t = 0; t < NT; t++)                /* the hits: each track its weapon */
+            if (flash_ms[t] != vis_seen[t]) {
+                vis_seen[t] = flash_ms[t];
+                if (!song.trk[t].mute) vis_fire(WEAPON[t]);
+            }
+    } else {
+        vis_wave_row = 0xFF;
+        for (t = 0; t < NT; t++) vis_seen[t] = flash_ms[t];
+        if (now - vis_patrol_ms > 2400u) { vis_patrol_ms = now; vis_spawn(vis_rnd(3) ? VE_WALKER : VE_DRONE); }
+    }
+    for (i = 0; i < VIS_NE; i++) {
+        vis_en_t *e = &vis_en[i];
+        int32_t v;
+        if (!e->on) continue;
+        v = (e->type == VE_DRONE ? 14 : e->type == VE_SHIP ? 7 : e->type == VE_TANK ? 9 : 8) * speed / 120;   /* m/s (90 m in ~10 s) */
+        e->z -= (int32_t)((uint32_t)(v * 16) * dt / 1000u);
+        if (e->type == VE_DRONE) e->x += ((vis_ms / 700u + i) & 1u) ? 1 : -1;
+        if (e->z < VIS_ZNEAR) {                 /* it reached the mech */
+            e->on = 0;
+            vis_dmg_ms = now;
+            vis_shield -= e->type == VE_SHIP ? 25 : 10;
+            if (vis_shield < 0) vis_shield = 100;   /* (a reboot: no end to it) */
+        }
+    }
+    if (vis_shield < 100 && !(now / 400u % 4u) && now - vis_dmg_ms > 3000u) vis_shield++;
+    for (i = 0; i < VIS_NS; i++) if (vis_sh[i].on && now - vis_sh[i].t0 > 300u) vis_sh[i].on = 0;
+    for (i = 0; i < VIS_NB; i++) if (vis_bm[i].on && (int32_t)(now - vis_bm[i].t0) > 900) vis_bm[i].on = 0;
+}
+static void vis_open(void)
+{
+    vis_on = 1;
+    vis_ms = 0;
+    vis_wave_row = 0xFF;
+    vis_shield = 100;
+    toast("VISUALIZER - LEFT: BACK");
+}
+
+/* ---- drawing */
+static int vis_proj(int32_t x, int32_t h, int32_t z, int32_t *px, int32_t *py, int32_t *sc)   /* sc: px a metre, Q4 */
+{
+    if (z < 16) return 0;
+    *px = 120 + x * VIS_F / z;
+    *py = VIS_HOR + (VIS_CAMH - h) * VIS_F / z;
+    *sc = 16 * VIS_F * 32 / z;                   /* (drawn larger than life: they read at a distance) */
+    return 1;
+}
+/* a box of w x hh metres (Q4) whose foot is dy metres (Q4) over (px, py), centred */
+static void vis_box(int32_t px, int32_t py, int32_t sc, int32_t w, int32_t hh, int32_t dy, uint16_t c)
+{
+    int32_t W = w * sc >> 8, H = hh * sc >> 8, Y = py - (dy * sc >> 8) - H;
+    if (W < 1) W = 1;
+    if (H < 1) H = 1;
+    g_rect(px - W / 2, Y, W, H, c);
+}
+static void vis_enemy(const vis_en_t *e, uint16_t fill, uint16_t hi, uint16_t eye)
+{
+    int32_t px, py, sc;
+    if (!vis_proj(e->x, e->h, e->z, &px, &py, &sc)) return;
+    if (!g_vis(py - (sc * 8 >> 4) - 4, (sc * 8 >> 4) + 8)) return;
+    switch (e->type) {
+    case VE_WALKER: {                           /* two legs stepping, a torso, a head, a gun arm */
+        int32_t step = (int32_t)((vis_ms / 160u + (uint32_t)(e->x & 7)) & 1u) * 4;
+        vis_box(px - (sc * 10 >> 8), py, sc, 8, 28 + step, 0, fill);
+        vis_box(px + (sc * 10 >> 8), py, sc, 8, 32 - step, 0, fill);
+        vis_box(px, py, sc, 30, 22, 30, hi);
+        vis_box(px, py, sc, 12, 8, 52, fill);
+        vis_box(px + (sc * 22 >> 8), py, sc, 24, 5, 40, fill);
+        vis_box(px, py, sc, 6, 3, 55, eye);
+        break;
+    }
+    case VE_TANK:                               /* tracks, a hull, a turret, the barrel's mouth at the mech */
+        vis_box(px, py, sc, 64, 8, 0, fill);
+        vis_box(px, py, sc, 56, 12, 8, hi);
+        vis_box(px, py, sc, 28, 10, 20, fill);
+        vis_box(px, py, sc, 6, 6, 22, eye);
+        break;
+    case VE_SHIP: {                             /* a gunship: a long hull, swept wings, two engines glowing */
+        int32_t bob = (int32_t)((vis_ms / 90u) % 8u);
+        int32_t W = 100 * sc >> 8, y = py - (bob > 3 ? 7 - bob : bob);
+        vis_box(px, y, sc, 100, 14, 0, fill);
+        vis_box(px, y, sc, 50, 8, 14, hi);
+        g_line(px - W / 2, y - 1, px - W, y + (W >> 3), hi);
+        g_line(px + W / 2, y - 1, px + W, y + (W >> 3), hi);
+        vis_box(px - (sc * 30 >> 8), y, sc, 10, 6, -6, eye);
+        vis_box(px + (sc * 30 >> 8), y, sc, 10, 6, -6, eye);
+        break;
+    }
+    default: {                                  /* a drone: a body, its rotor turning */
+        int32_t r = (sc * 22 >> 8) * xj_sin(vis_ms * 900u) / 32768;
+        vis_box(px, py, sc, 14, 8, 0, fill);
+        g_line(px - r, py - (sc * 10 >> 8), px + r, py - (sc * 10 >> 8), hi);
+        vis_box(px, py, sc, 4, 3, 2, eye);
+        break;
+    }
+    }
+}
+static void vis_draw(void)
+{
+    const uint16_t sky = C_BG, grid = g_mix(C_BG, C_BLUE, 60), hud = C_BLUE, foe = C_ORANGE, amber = C_CYAN;
+    int32_t sx = 0, sy = 0, k, x, y;
+    uint32_t i;
+    char s[32];
+    if (vis_ms - vis_shake_ms < 120u) { sx = (int32_t)((vis_ms / 16u) % 5u) - 2; sy = (int32_t)((vis_ms / 22u) % 3u) - 1; }
+    g_rect(0, VIS_Y0, 240, 240 - VIS_Y0, sky);
+    for (i = 0; i < 26u; i++) {                 /* stars, and the hills far off */
+        uint32_t h = (i + 1u) * 2654435761u;
+        g_px((int32_t)(h % 240u) + sx, VIS_Y0 + 2 + (int32_t)((h >> 12) % 60u), g_mix(sky, C_TXT, 60 + (h >> 28) * 10u));
+    }
+    for (x = 0; x < 240; x += 8) {
+        int32_t hh = 4 + ((x * 7 + 13) % 11) + (xj_sin((uint32_t)x * 400u) >> 13);
+        g_rect(x + sx, VIS_HOR - hh + sy, 8, hh, g_mix(sky, hud, 22));
+    }
+    g_rect(0, VIS_HOR + sy, 240, 1, g_mix(sky, hud, 120));
+    for (k = 1; k < 24; k++) {                  /* the ground: its lines coming at the mech, at the tempo */
+        int32_t z = k * 64 - (int32_t)(vis_scroll % 64u);
+        if (z < 24) continue;
+        y = VIS_HOR + VIS_CAMH * VIS_F / z + sy;
+        g_rect(0, y, 240, 1, g_mix(sky, grid, (uint32_t)clampi(256 - z / 6, 30, 256)));
+    }
+    for (x = -480; x <= 480; x += 96)
+        g_line(120 + x * VIS_F / VIS_ZFAR + sx, VIS_HOR + 4 + sy, 120 + x * VIS_F / 48 + sx, VIS_HOR + VIS_CAMH * VIS_F / 48 + sy, grid);
+    for (k = 0; k < 2; k++)                     /* the enemies, far first */
+        for (i = 0; i < VIS_NE; i++) {
+            const vis_en_t *e = &vis_en[i];
+            int lit;
+            uint16_t f;
+            if (!e->on || ((e->z > VIS_ZFAR / 2) != (k == 0))) continue;
+            lit = e->hit_ms && vis_ms >= e->hit_ms && vis_ms - e->hit_ms < 90u;
+            f = g_mix(sky, foe, (uint32_t)clampi(256 - e->z / 8, 70, 200));
+            vis_enemy(e, lit ? C_TXT : f, lit ? C_TXT : g_mix(f, foe, 120), lit ? C_TXT : amber);
+        }
+    for (i = 0; i < VIS_NB; i++) {              /* explosions: a fireball, a ring, debris */
+        const vis_boom_t *b = &vis_bm[i];
+        int32_t px, py, sc, age = (int32_t)(vis_ms - b->t0), r;
+        if (!b->on || age < 0 || !vis_proj(b->x, b->h, b->z, &px, &py, &sc)) continue;
+        r = (sc * (b->big ? 40 : 16) >> 8) * (age + 60) / 300 + 3;
+        if (age < 500) {
+            uint16_t c = age < 80 ? C_TXT : g_mix(amber, foe, (uint32_t)clampi(age / 2, 0, 256));
+            g_rect(px - r / 2 + sx, py - r / 2 + sy, r, r, c);
+        }
+        for (k = 0; k < (b->big ? 8 : 4); k++) {
+            uint32_t a = (uint32_t)k * 8192u + i * 3000u;
+            int32_t d = r + age / 6;
+            g_rect(px + sx + d * xj_sin(a + 0x4000u) / 32768, py + sy + d * xj_sin(a) / 32768 + age * age / 9000, 2, 2,
+                   age < 600 ? amber : g_mix(sky, foe, 100));
+        }
+        if (b->big && age < 300) {
+            int32_t q = r + age / 3;
+            g_line(px - q + sx, py + sy, px + q + sx, py + sy, C_TXT);
+        }
+    }
+    for (i = 0; i < VIS_NS; i++) {              /* the rounds: tracers from the guns, a missile's smoke, a laser */
+        const vis_shot_t *sh = &vis_sh[i];
+        int32_t px, py, sc, mx, my, age = (int32_t)(vis_ms - sh->t0), j;
+        if (!sh->on || !vis_proj(sh->x, sh->h, sh->z, &px, &py, &sc)) continue;
+        mx = sh->kind == VW_LEFT ? 26 : sh->kind == VW_RIGHT ? 214 : sh->kind == VW_MISSILE ? 200 : 120;
+        my = sh->kind == VW_CHIN ? 214 : sh->kind == VW_MISSILE ? 172 : 196;
+        px += sx; py += sy;
+        if (sh->kind == VW_LASER) {
+            if (age < 120) { g_line(100, 200, px, py, hud); g_line(140, 200, px, py, hud); g_line(101, 200, px, py, C_TXT); }
+        } else if (sh->kind == VW_MISSILE) {
+            for (j = 0; j < 10; j++) {
+                int32_t f = clampi(age * 256 / 260 - j * 14, 0, 256), cx = mx + (px - mx) * f / 256, cy = my + (py - my) * f / 256 - (f * (256 - f) >> 9);
+                g_rect(cx - 1, cy - 1, 3, 3, j ? g_mix(sky, C_MUTED, (uint32_t)(220 - j * 18)) : amber);
+            }
+        } else if (age < 130) {
+            int32_t f0 = age * 256 / 130, f1 = clampi(f0 + 70, 0, 256);
+            g_line(mx + (px - mx) * f0 / 256, my + (py - my) * f0 / 256, mx + (px - mx) * f1 / 256, my + (py - my) * f1 / 256,
+                   sh->kind == VW_CHIN ? amber : C_TXT);
+        }
+    }
+    {                                           /* the cockpit: the canopy's struts, the guns, the dash */
+        uint16_t frame = g_mix(sky, hud, 40), dark = g_mix(sky, C_PANEL, 120);
+        for (k = 0; k < 4; k++) {
+            g_line(k, VIS_Y0, 34 + k, 240, frame);
+            g_line(239 - k, VIS_Y0, 205 - k, 240, frame);
+        }
+        g_line(0, VIS_Y0 + 18, 240, VIS_Y0 + 18, g_mix(sky, hud, 30));
+        for (k = 0; k < 2; k++) {               /* the cannons, a flash at the muzzle */
+            int32_t gx = k ? 202 : 14, fl = vis_ms - vis_fire_ms[k ? VW_RIGHT : VW_LEFT] < 70u;
+            g_rect(gx, 192, 24, 30, dark);
+            g_rect(gx + 6, 182, 12, 12, dark);
+            g_rect(gx + 8, 184, 8, 3, g_mix(dark, hud, 120));
+            if (fl) { g_rect(gx + 4, 174, 16, 9, C_TXT); g_rect(gx + 1, 177, 22, 3, amber); }
+        }
+        g_rect(40, 222, 160, 18, dark);
+        g_rect(40, 222, 160, 1, g_mix(dark, hud, 150));
+        if (vis_ms - vis_fire_ms[VW_CHIN] < 60u) g_rect(114, 210, 12, 6, amber);
+    }
+    {                                           /* the HUD: sight, wave, kills, shield, radar, power */
+        int32_t cx = 120, cy = VIS_HOR - 6, open = vis_ms - vis_fire_ms[VW_LEFT] < 90u || vis_ms - vis_fire_ms[VW_RIGHT] < 90u ? 3 : 0;
+        g_rect(cx - 14 - open, cy, 8, 1, hud); g_rect(cx + 7 + open, cy, 8, 1, hud);
+        g_rect(cx, cy - 12 - open, 1, 7, hud); g_rect(cx, cy + 6 + open, 1, 7, hud);
+        g_rect(cx, cy, 1, 1, foe);
+        s[0] = 0;
+        fmt_u(str_cat(s, "WAVE "), vis_wave % 1000u, 3);
+        g_text(8, VIS_Y0 + 3, s, hud, T_CROP);
+        g_text(84, VIS_Y0 + 3, vis_section(), amber, T_CROP | T_BOLD);
+        s[0] = 0;
+        fmt_u(s, vis_kills % 10000u, 4);
+        g_text(202, VIS_Y0 + 3, s, foe, T_CROP | T_BOLD);
+        g_text(156, VIS_Y0 + 3, "KILLS", g_mix(sky, hud, 150), T_CROP);
+        g_rect(44, 226, 52, 6, g_mix(sky, hud, 50));   /* the shield */
+        g_rect(44, 226, 52 * vis_shield / 100, 6, vis_shield < 30 && (vis_ms / 200u) & 1u ? foe : hud);
+        {
+            int32_t rx = 120, ry = 231, a = 0;   /* the radar: what comes, as dots */
+            g_rect(rx - 22, ry - 8, 44, 1, g_mix(sky, hud, 80));
+            for (i = 0; i < VIS_NE; i++) if (vis_en[i].on)
+                g_rect(rx + vis_en[i].x * 22 / 480, ry - 1 - vis_en[i].z * 12 / VIS_ZFAR, 2, 2, foe);
+            for (i = 0; i < 120u; i += 6u) { int32_t v = scope[(scope_w + i) % 120u]; a += v < 0 ? -v : v; }
+            a = clampi(a / 20 / 60, 0, 10);       /* the power: the output's level */
+            for (k = 0; k < 10; k++) g_rect(150 + k * 4, 226, 3, 6, k < a ? (k > 7 ? foe : amber) : g_mix(sky, hud, 40));
+        }
+        if (vis_ms - vis_dmg_ms < 250u) {       /* a hit on the mech: red at the edges */
+            g_rect(0, VIS_Y0, 240, 3, foe); g_rect(0, 237, 240, 3, foe);
+            g_rect(0, VIS_Y0, 3, 240 - VIS_Y0, foe); g_rect(237, VIS_Y0, 3, 240 - VIS_Y0, foe);
+        }
+        if (!sq_play && (vis_ms / 500u) & 1u) g_text_c(120, VIS_HOR + 30, "STANDBY - PLAY TO ENGAGE", amber, T_CROP);
+    }
+}
