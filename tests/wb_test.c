@@ -112,36 +112,36 @@ int main(void)
     {   /* (XENOISE) MST the settings: SELECT its group, ALGORITHM the parameter, PRESETS turns it; GLO again the mixer */
         tap(B_GLO);
         check("GLO: MST, its TEMPO page", page == PG_MST && sub == 0u);
-        web_enc(EN_SELECT, 3); run_ms(60);
-        check("  SELECT x3: SYSTEM", page == PG_MST && sub == 3u && mst_col == 0u);
+        web_enc(EN_PRESET, 3); run_ms(60);
+        check("  PRESETS x3 (the rows): SYSTEM", page == PG_MST && sub == 3u && pilot_col == 0u);
         web_enc(EN_K1, 1); run_ms(60);
         check("  K1: the next theme (COMBAT), kept in the settings' byte", TH == &WB_THEMES[1] && (xn_prefs & 15u) == 1u);
         web_enc(EN_K1, (int32_t)WB_NTHEME - 2); run_ms(60);
         check("  all the way: the last of the covers' themes", TH == &WB_THEMES[WB_NTHEME - 1u]);
         web_enc(EN_K1, 1); run_ms(60);
         check("  one more: round to CONCRETE", TH == &WB_THEMES[0]);
-        web_enc(EN_PRESET, 1); run_ms(60);
-        web_enc(EN_PRESET, -1); run_ms(60);
-        check("  PRESETS on THEME: on and back, CONCRETE (the default)", TH == &WB_THEMES[0] && (xn_prefs & 15u) == 0u);
         web_enc(EN_SELECT, 1); run_ms(60);
-        check("  SELECT: round to TEMPO", sub == 0u);
+        web_enc(EN_SELECT, -1); run_ms(60);
+        check("  SELECT on THEME: on and back, CONCRETE (the default)", TH == &WB_THEMES[0] && (xn_prefs & 15u) == 0u);
+        web_enc(EN_PRESET, 1); run_ms(60);
+        check("  PRESETS: round to TEMPO", sub == 0u);
         {
             uint32_t b0 = wb_song.bpm;
-            web_enc(EN_PRESET, 2); run_ms(60);
-            check("  PRESETS: the BPM (ALGORITHM on the first)", wb_song.bpm != b0);
-            web_enc(EN_PRESET, -2); run_ms(60);
+            web_enc(EN_SELECT, 2); run_ms(60);
+            check("  SELECT: the BPM (ALGORITHM on the first)", wb_song.bpm != b0);
+            web_enc(EN_SELECT, -2); run_ms(60);
             web_enc(EN_ALGO, 1); run_ms(60);
-            check("  ALGORITHM: the next parameter", mst_col == 1u);
+            check("  ALGORITHM: the next parameter", pilot_col == 1u);
             web_enc(EN_ALGO, -5); run_ms(60);
-            check("  (no further than the first)", mst_col == 0u);
+            check("  (no further than the first)", pilot_col == 0u);
         }
         tap(B_GLO);
         check("  GLO again: the mixer", page == PG_MIX);
         {
             uint32_t v0 = wb_song.mvol;
-            web_enc(EN_PRESET, -4); run_ms(60);
-            check("  PRESETS: the master volume", wb_song.mvol + 4u == v0 || (v0 < 4u && wb_song.mvol == 0u));
-            web_enc(EN_PRESET, 4); run_ms(60);
+            web_enc(EN_SELECT, -4); run_ms(60);
+            check("  SELECT: the master volume", wb_song.mvol + 4u == v0 || (v0 < 4u && wb_song.mvol == 0u));
+            web_enc(EN_SELECT, 4); run_ms(60);
         }
         tap(B_GLO);
         check("  GLO again: the settings", page == PG_MST);
@@ -160,9 +160,8 @@ int main(void)
         check("  K3: the pitch depth, the song's own LFO now", wb_song.x.lfo[T_BAS].set && wb_song.x.lfo[T_BAS].pit != 0);
         run_ms(100);
         tap(B_LFO);
-        check("  LFO again: GEN", page == PG_GEN);
+        check("  LFO again: its page 2", page == PG_LFO && lfo_pg == 1u);
         tap(B_LFO);
-        check("  and again: LFO", page == PG_LFO);
         tap(B_ARP);
         check("ARP: its page", page == PG_ARP && sub == 0u);
         lab[0] = val[0] = 0;
@@ -222,49 +221,79 @@ int main(void)
         wb_song.loop = 0;
         tap(B_HOME);
     }
-    {   /* (XENOISE) SAV: K3 save, K4 load (OCT+ yes, OCT- no); OCT- deletes (again: sure); OCT+ a new empty song, x4 a
-         * generated one */
+    {   /* (XENOISE) SAV: K1 save K2 load K3 copy K4 paste (a turn asks: OCT+ yes, OCT- no); SAVE again: K1 insert K2
+         * outsert K3 new K4 delete; OCT- deletes (again: sure); OCT+ a new empty song, x4 a generated one */
         char nm[16];
         tap(B_SAVE);
-        slot_sel = 5;
-        web_enc(EN_K3, 1); run_ms(60);
-        check("SAV K3: SAVE asked", arm_f == 0u);
-        tap(B_OCTUP);
-        check("  OCT+: saved to slot 5", slot_ok[5] != 0);
-        memcpy(nm, wb_song.wb_name, 16);
-        web_enc(EN_K4, 1); run_ms(60);
+        check("SAVE: the SAV page", page == PG_SNG && sub == 0u);
+        web_enc(EN_PRESET, 5 - (int32_t)slot_sel); run_ms(60);
+        check("  PRESETS (the rows): slot 5", slot_sel == 5u);
+        web_enc(EN_K1, 1); run_ms(60);
+        check("  K1: SAVE asked", arm_f == SA_SAVE);
         tap(B_OCTDN);
-        check("  K4 then OCT-: not loaded (the question gone)", arm_f == 0xFF);
+        check("  OCT-: cancelled, nothing saved", arm_f == 0xFF && !slot_ok[5]);
+        web_enc(EN_K1, 1); run_ms(60); tap(B_OCTUP);
+        check("  K1, OCT+: saved to slot 5", slot_ok[5] != 0);
+        memcpy(nm, wb_song.wb_name, 16);
+        web_enc(EN_K3, 1); run_ms(60); tap(B_OCTUP);
+        check("  K3, OCT+: slot 5 copied", sng_clip == 5u);
+        slot_sel = 7;
+        web_enc(EN_K4, 1); run_ms(60); tap(B_OCTUP);
+        check("  K4 at 7, OCT+: pasted there", slot_ok[7] && !memcmp(slot_name[7], nm, 15));
+        tap(B_SAVE);
+        check("  SAVE again: page 2", page == PG_SNG && sub == 1u);
+        slot_sel = 6;
+        web_enc(EN_K1, 1); run_ms(60); tap(B_OCTUP);
+        check("  K1 INSERT at 6: the copy in 6, 7 now 8", slot_ok[6] && !slot_ok[7] && slot_ok[8]);
+        web_enc(EN_K2, 1); run_ms(60); tap(B_OCTUP);
+        check("  K2 OUTSERT 6: 7 now 6, 8 now 7", !slot_ok[6] && slot_ok[7] && !slot_ok[8]);
+        slot_sel = 7;
+        web_enc(EN_K4, 1); run_ms(60); tap(B_OCTUP);
+        check("  K4 DELETE 7, OCT+", !slot_ok[7]);
+        tap(B_SAVE);
+        check("  SAVE again: page 1", sub == 0u);
+        slot_sel = 5;
         tap(B_OCTUP); run_ms(900);
         check("  OCT+ a tap: a new empty song", !strcmp(wb_song.wb_name, "EMPTY SONG"));
-        slot_sel = 5;
-        web_enc(EN_K4, 1); run_ms(60); tap(B_OCTUP);
-        check("  K4, OCT+: the song back from slot 5", !memcmp(wb_song.wb_name, nm, 15));
+        check("  the default kit: PUNCH, CRACK, WARM KEYS an octave down, TAPE EP, a light reverb",
+              wb_song.wb_trk[T_KIK].patch == 5u && wb_song.wb_trk[T_DRM].patch == 3u && wb_song.wb_trk[T_BAS].patch == 5u &&
+              wb_song.wb_trk[T_BAS].wb_p[PY_OCT] == -1 && wb_song.wb_trk[wb_T_KEY].patch == 3u && wb_song.wb_trk[wb_T_KEY].rev > 20u && wb_song.wb_trk[T_BRK].rev > 0u);
+        web_enc(EN_K2, 1); run_ms(60); tap(B_OCTUP);
+        check("  K2, OCT+: the song back from slot 5", !memcmp(wb_song.wb_name, nm, 15));
         tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP);
         check("  OCT+ four times: GENERATE asked", arm_f == 1u);
         tap(B_OCTUP);
         check("  OCT+: a new song, the parts in a form", memcmp(wb_song.wb_name, nm, 15) && strcmp(wb_song.wb_name, "EMPTY SONG") && form_of() == 0);
+        check("  its bass: warm keys or a sine, an octave down", (wb_song.wb_trk[T_BAS].patch == 5u || wb_song.wb_trk[T_BAS].patch == 0u) && wb_song.wb_trk[T_BAS].wb_p[PY_OCT] == -1);
         tap(B_OCTDN);
         check("  OCT-: DELETE asked", arm_f == 3u && slot_ok[5]);
         tap(B_OCTDN);
         check("  OCT- again: slot 5 deleted", !slot_ok[5]);
+        /* SAVE held: GEN, the next song's options */
+        web_buttons(1u << B_SAVE); run_ms(600); web_buttons(0); run_ms(120);
+        check("SAVE held: GEN", page == PG_GEN && sub == 0u);
+        web_enc(EN_ALGO, 1); run_ms(60);
+        web_enc(EN_SELECT, 2); run_ms(60);
+        check("  ALGORITHM the knob (PROG), SELECT turns it", pilot_col == 1u && ng_prog == 2u);
+        web_enc(EN_K3, 2); run_ms(60);
+        tap(B_SAVE);
+        check("  SAVE: its page 2", page == PG_GEN && sub == 1u);
+        web_enc(EN_K1, 70); web_enc(EN_K2, 3); run_ms(60);
+        check("  K1 BPM, K2 KEY", ng_bpm == 129u && ng_key == 3u);
+        tap(B_OCTUP);
+        check("  OCT+: GENERATE asked", arm_f == SA_NEW);
+        tap(B_OCTUP);
+        check("  OCT+: the song as asked (AXIS POP, a bar a chord, 129 BPM, D)",
+              wb_song.prog == 1u && wb_song.rows == 16u && wb_song.bpm == 129u && wb_song.key == 2u);
+        web_buttons(1u << B_SAVE); run_ms(600); web_buttons(0); run_ms(120);
+        check("  SAVE held again: SAV", page == PG_SNG);
+        ng_prog = ng_cspace = ng_bpm = ng_key = 0;
         tap(B_HOME);
     }
     tap(B_FX);
     check("FX: a tap opens PERFORM, it stays", wb_fx_on());
     tap(B_FX);
     check("  FX again: closed, the page as it was", !wb_fx_on() && page == PG_TRK);
-    tap(B_SAVE);
-    check("SAVE: the SAV page", page == PG_SNG);
-    {
-        uint32_t s0 = slot_sel;
-        tap(B_SAVE);
-        check("  SAVE again: the question (OCT+ yes)", arm_f == 0u);
-        tap(B_OCTDN);
-        check("  OCT-: cancelled, nothing saved", arm_f == 0xFF && !slot_ok[s0]);
-        tap(B_SAVE); tap(B_OCTUP);
-        check("  SAVE, OCT+: saved to the slot", slot_ok[s0] != 0);
-    }
     tap(B_HOME);
     wb_song.loop = 1;                           /* (XENOISE: the CHORUS, every track in it; the INTRO leaves the synth out) */
     wb_song.cur = S_CHORUS;

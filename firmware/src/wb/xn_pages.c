@@ -383,3 +383,87 @@ static int fx_knob(uint32_t i, int32_t dd, char *lab, char *val)
     return 1;
 }
 static void fx_reset(void) { fx_flt = 0; fx_chop = 0; fx_wash = 0; }
+
+/* ---- (XENOISE) GEN: the next song (SAVE held). Page 1 GENRE PROG CHORDS MELODY, page 2 BPM KEY FORM BASS (SAVE: the
+ * next page); a row a knob, its number at its side, the one ALGORITHM is on framed (SELECT turns it) */
+static void draw_gen(void)
+{
+    static const char *const RN[7] = {"I", "II", "III", "IV", "V", "VI", "VII"};
+    static const char SL[8] = {'I', 'V', 'C', 'V', 'B', 'U', 'D', 'O'};   /* intro verse chorus verse bridge bUild drop outro */
+    const wb_genre_t *g = &WB_GENRES[genre_pick % WB_NGENRE];
+    char s[48], lab[16], val[24], *e;
+    uint32_t r, k, now = fm1_ms, pg = sub & 1u;
+    int32_t y0 = TOP_H + 50;
+    g_rect(0, TOP_H, 240, BODY_H, C_BG);
+    gen_holo();
+    if (!pg) {
+        knob_badge(226, TOP_H + 16, 0);
+        if (pilot_col == 0u) g_frame(0, TOP_H, 240, 46, C_TXT);
+    }
+    for (r = 0; r < 4u; r++) {
+        int32_t y = y0 + (int32_t)r * 23, x = 80, w = 156;
+        uint32_t kn = pg ? r : r + 1u;
+        int has = pg || r < 3u, foc = has && kn == pilot_col;
+        g_rect(2, y, 236, 21, g_mix(C_BG, C_PANEL, foc ? 220u : 120u));
+        if (foc) g_frame(2, y, 236, 21, C_TXT);
+        lab[0] = val[0] = 0;
+        if (has) { ngen_knob(kn, 0, lab, val); knob_badge(5, y + 4, kn); g_text(21, y + 4, lab, C_MUTED, T_CROP); }
+        s[0] = 0;
+        if (!pg && r == 0u) {                   /* PROG: its name */
+            g_text(x, y + 4, ng_prog > 1u ? WB_PROGS[ng_prog - 1u].name : ng_prog ? "THE GENRE'S OWN" : "AUTO (GENRE'S PICK)", C_TXT, T_CROP);
+        } else if (!pg && r == 1u) {            /* CHORDS: a pattern's 4 bars, a block a chord, its numeral */
+            const int8_t *dg = ng_prog > 1u ? WB_PROGS[ng_prog - 1u].deg : g->deg;
+            uint32_t n = ng_prog > 1u ? WB_PROGS[ng_prog - 1u].n : g->ndeg ? g->ndeg : 1u, rows = ng_cspace ? 4u << ng_cspace : n > 4u ? 8u : 16u, at = 0;
+            while (n * rows > NROW && rows > 8u) rows /= 2u;
+            for (k = 0; at < NROW; k++, at += rows) {
+                int32_t bx = x + (int32_t)(at * (uint32_t)w / NROW), bw = (int32_t)(rows * (uint32_t)w / NROW);
+                uint32_t dd = (uint32_t)(dg[k % n] % 7 + 7) % 7u;
+                g_rect(bx, y + 3, bw - 1, 15, k % n == 0u ? g_mix(C_BG, C_CYAN, 140) : g_mix(C_BG, C_BLUE, 60 + (k & 1u) * 40u));
+                if (bw >= 18) g_text_c(bx + bw / 2, y + 4, RN[dd], C_TXT, T_CROP);
+            }
+        } else if (!pg && r == 2u) {            /* MELODY: two bars of it, what stays (the downbeats, each bar's last) */
+            static const uint8_t RH[6] = {0, 3, 6, 8, 11, 14};
+            uint32_t drop = ng_mspace == 1u ? 40u : ng_mspace == 2u ? 70u : 0u;
+            for (k = 0; k < 12u; k++) {
+                uint32_t step = (k / 6u) * 16u + RH[k % 6u], keep = RH[k % 6u] % 8u == 0u || k % 6u == 5u || (k * 2654435761u >> 9) % 100u >= drop;
+                int32_t px = x + (int32_t)(step * (uint32_t)w / 32u), h = keep ? 6 + (int32_t)((k * 7u) % 5u) * 2 : 2;
+                g_rect(px, y + 18 - h, 6, h, keep ? C_TXT : C_FAINT);
+            }
+        } else if (!pg) {                       /* the rest of it, at a glance */
+            e = str_cat(s, "BPM ");
+            e = ng_bpm ? fmt_u(e, ng_bpm, 0) : str_cat(e, "AUTO");
+            e = str_cat(str_cat(e, "  KEY "), ng_key ? NOTE_NM[(ng_key - 1u) % 12u] : "AUTO");
+            str_cat(str_cat(e, "  FORM "), FORM_NAME[ng_form % WB_NFORM]);
+            g_text(6, y + 4, s, C_MUTED, T_CROP);
+        } else if (r == 0u) {                   /* BPM: it, a light at its beat */
+            uint32_t bpm = ng_bpm ? ng_bpm : (g->bpm[0] + g->bpm[1]) / 2u;
+            if (ng_bpm) fmt_u(s, ng_bpm, 0);
+            else { e = fmt_u(str_cat(s, "AUTO "), g->bpm[0], 0); *e++ = '-'; fmt_u(e, g->bpm[1], 0); }
+            g_text(x, y + 4, s, C_TXT, T_CROP);
+            g_rect(222, y + 6, 9, 9, now % (60000u / (bpm ? bpm : 120u)) < 90u ? C_ORANGE : C_FAINT);
+        } else if (r == 1u) {                   /* KEY: twelve, the one lit */
+            g_text(x, y + 4, val, C_TXT, T_CROP);
+            for (k = 0; k < 12u; k++)
+                g_rect(120 + (int32_t)k * 10, y + 5, 8, 11, ng_key && ng_key - 1u == k ? C_ORANGE : NOTE_NM[k][1] ? C_FAINT : g_mix(C_BG, C_TXT, 90));
+        } else if (r == 2u) {                   /* FORM: its parts */
+            uint32_t f = ng_form % WB_NFORM, n = FORM_LEN[f];
+            for (k = 0; k < n; k++) {
+                int32_t bx = x + (int32_t)(k * (uint32_t)w / n), bw = (int32_t)((uint32_t)w / n);
+                char c2[2] = {SL[FORM[f][k] % 8u], 0};
+                g_rect(bx, y + 3, bw - 1, 15, FORM[f][k] == S_CHORUS || FORM[f][k] == S_DROP ? g_mix(C_BG, C_ORANGE, 150) : g_mix(C_BG, C_BLUE, 90));
+                g_text_c(bx + bw / 2, y + 4, c2, C_TXT, T_CROP);
+            }
+        } else {                                /* BASS */
+            g_text(x, y + 4, (const char *const[]){"WARM KEYS / SINE -1", "WARM KEYS -1 OCT", "SINE -1 OCT", "THE GENRE'S OWN"}[ng_bass & 3u], C_TXT, T_CROP);
+        }
+    }
+    if (arm_f == SA_NEW || (sng_fx == 4u && now - sng_fx_ms < 900u)) {   /* the question; then the new song coming */
+        int ask = arm_f == SA_NEW, blink = (now / 260u) & 1u;
+        g_rect(14, TOP_H + 66, 212, 50, C_BG);
+        g_frame(14, TOP_H + 66, 212, 50, blink ? C_BLUE : g_mix(C_BG, C_BLUE, 120));
+        g_text_c(120, TOP_H + 71, ask ? "GENERATE A SONG" : "NEW SONG", C_BLUE, T_BOLD);
+        g_text_c(120, TOP_H + 89, ask ? (genre_pick < WB_NGENRE ? g->name : "EMPTY SONG") : song.name, C_TXT, T_CROP);
+        if (ask) g_text_c(120, TOP_H + 102, "OCT+: YES   OCT-: NO", blink ? C_TXT : C_MUTED, T_CROP);
+        else g_rect(28, TOP_H + 104, (int32_t)(now - sng_fx_ms) * 170 / 900, 4, C_CYAN);
+    }
+}

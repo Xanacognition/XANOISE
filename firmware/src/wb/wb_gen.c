@@ -20,6 +20,15 @@ static void pat_blank(pat_t *p, uint32_t len)
     memset(p, 0, sizeof *p);
     p->len = (uint8_t)len;
 }
+/* (XENOISE) GEN's options for the next song (0: the genre's own choice, AUTO) */
+static uint8_t ng_prog;                        /* 0 AUTO, k: WB_PROGS[k - 1] (CUSTOM left out) */
+static uint8_t ng_cspace;                      /* the chords: 0 AUTO, 1 HALF A BAR each, 2 A BAR, 3 TWO BARS */
+static uint8_t ng_mspace;                      /* the melodies: 0 AS WRITTEN, 1 AIRY, 2 SPARSE (notes left out, the downbeats
+                                                 * and each bar's last kept: the phrase's shape, more room round it) */
+static uint8_t ng_bpm;                         /* 0 AUTO, else the BPM */
+static uint8_t ng_key;                         /* 0 AUTO, k: C .. B (k - 1) */
+static uint8_t ng_form;                        /* SONG CLUB JAM EPIC */
+static uint8_t ng_bass;                        /* 0 WARM KEYS or SINE, 1 WARM KEYS, 2 SINE, 3 the genre's own */
 static uint32_t prog_len(void) { return (uint32_t)clampi((int32_t)song.ndeg * song.rows, 16, (int32_t)NROW); }
 
 /* the song's drum lanes: the main set or the other one */
@@ -256,6 +265,14 @@ static void gen_track(uint32_t pi, uint32_t t, uint32_t mode, uint32_t dens, con
                     if (role == 0u) cell_set(&c[15], NOTE_OFF, 0, 0, 0);
                 } else {                        /* ARP */
                     for (i = 0; i < 16u; i += 2u) if (!i || rnd(100) < 70u + dens * 30u / 100u) cell_set(&c[i], N(ap[i / 2u], i), i % 4u ? 8u : 11u, 0, 0);
+                }
+                if (ng_mspace) {               /* (XENOISE) GEN's MELODY: room round the phrase */
+                    uint32_t j, later, drop = ng_mspace == 1u ? 40u : 70u;
+                    for (i = 1; i < 16u; i++) {
+                        if (!c[i].n || c[i].n == NOTE_OFF || i % 8u == 0u) continue;
+                        for (later = 0, j = i + 1u; j < 16u; j++) if (c[j].n && c[j].n != NOTE_OFF) later = 1;
+                        if (later && rnd(100) < drop) memset(&c[i], 0, sizeof c[i]);
+                    }
                 }
             }
 #undef N
@@ -518,6 +535,15 @@ static void song_name(void)
     song.name[n++] = (char)('0' + k / 10u);
     song.name[n++] = (char)('0' + k % 10u);
 }
+static void bass_std(void)                      /* (XENOISE) the standard bass: WARM KEYS or SUB BASS (near a sine), an octave
+                                                 * down (the generated lines sit around C2..C3: down one, the sub's own register) */
+{
+    track_t *b = &song.trk[T_BAS];
+    if (ng_bass == 3u) return;
+    sound_patch(T_BAS, ng_bass == 1u ? 5u : ng_bass == 2u ? 0u : rnd(2) ? 5u : 0u);
+    if (b->patch == 0u) b->p[PY_INDEX] = 1;      /* (the sub: index 0.1, a sine with a breath of warmth) */
+    b->p[PY_OCT] = -1;
+}
 static void song_new(uint32_t gi)
 {
     const wb_genre_t *g;
@@ -528,7 +554,7 @@ static void song_new(uint32_t gi)
     song.x.magic = SONG_EXT_MAGIC;              /* (XENOISE: the extension, nothing set) */
     song.genre = (uint8_t)(gi % WB_NGENRE);
     g = genre();
-    pid = g->nprog ? g->prog[rnd(g->nprog)] : 0u;
+    pid = ng_prog && ng_prog < WB_NPROG ? ng_prog - 1u : g->nprog ? g->prog[rnd(g->nprog)] : 0u;
     song.prog = (uint8_t)pid;
     if (pid == 0u || WB_PROGS[pid].scale == 255u) {   /* VIBE: the genre's own */
         song.scale = g->scale[rnd(g->nscale ? g->nscale : 1u)];
@@ -540,9 +566,12 @@ static void song_new(uint32_t gi)
         for (i = 0; i < 8u; i++) song.deg[i] = WB_PROGS[pid].deg[i];
     }
     if (!song.ndeg) { song.ndeg = 1; song.deg[0] = 0; }
-    song.rows = song.ndeg > 4u ? 8u : 16u;
+    song.rows = ng_cspace ? (uint8_t)(4u << ng_cspace) : song.ndeg > 4u ? 8u : 16u;
+    while (song.ndeg * song.rows > NROW && song.rows > 8u) song.rows /= 2u;   /* (the chords all in a pattern) */
     song.key = (uint8_t)(const uint8_t[]){0, 2, 4, 5, 7, 9, 10, 11, 1, 3}[rnd(10)];
+    if (ng_key) song.key = (uint8_t)((ng_key - 1u) % 12u);
     song.bpm = (uint8_t)(g->bpm[0] + rnd((uint32_t)(g->bpm[1] - g->bpm[0]) + 1u));
+    if (ng_bpm) song.bpm = ng_bpm;
     song.swing = (uint8_t)(g->swing[0] + rnd((uint32_t)(g->swing[1] - g->swing[0]) + 1u));
     song.age = 0;                               /* clean: tape AGE and CRUSH are there to dial in (MST) */
     song.crush = 0;
@@ -560,6 +589,7 @@ static void song_new(uint32_t gi)
         }
     }
     if (g->nsyn) sound_patch(T_SYN, g->syn[rnd(g->nsyn)]);
+    bass_std();                                 /* (XENOISE) the bass: warm keys or a sine, an octave down */
     if (g->space >= 85u) {                      /* (XENOISE) the most spacious genres: their tracks deep in the reverb and the
                                                  * delay (a dreamscape: the bell's echoes, the pads' wash; the drums further off) */
         static const uint8_t REV[NT] = {35, 20, 40, 12, 60, 75}, DLY[NT] = {10, 0, 15, 0, 40, 25};
@@ -579,16 +609,30 @@ static void song_new(uint32_t gi)
     roll_new();
     song_name();
     for (i = 0; i < NPAT; i++) gen_pattern(i, sect_v(i));
-    form_set(0);                                /* (XENOISE) SONG: intro, verse, chorus .. outro */
+    form_set(ng_form % WB_NFORM);              /* (XENOISE) SONG: intro, verse, chorus .. outro (GEN's FORM) */
     song.cur = 0;
     seed_of = 0xFF;
 }
 
-static void song_empty(void)                    /* a blank page: the sounds and tempo of the genre it had, no notes, A alone */
+static void song_empty(void)                    /* (XENOISE) a blank page on the default kit: knocking drums, a warm keys bass an
+                                                 * octave down, a soft piano with its echoes, a soft pad; a light reverb over it all */
 {
-    uint32_t i;
+    static const uint8_t REV[NT] = {18, 10, 16, 8, 38, 32}, DLY[NT] = {0, 0, 0, 0, 28, 14}, VOL[NT] = {56, 54, 46, 64, 54, 42};
+    uint32_t i, t;
     song_new(song.genre % WB_NGENRE);
     for (i = 0; i < NPAT; i++) pat_blank(&song.pat[i], 16);
+    for (t = 0; t < NT; t++) { track_defaults(t); song.trk[t].rev = REV[t]; song.trk[t].dly = DLY[t]; song.trk[t].vol = VOL[t]; }
+    sound_patch(T_KIK, 5);                      /* PUNCH */
+    sound_patch(T_DRM, 3);                      /* CRACK */
+    hat_patch(T_DRM, 1);                        /* TIGHT */
+    sound_patch(T_BAS, 5);                      /* WARM KEYS */
+    song.trk[T_BAS].p[PY_OCT] = -1;
+    sound_patch(T_KEY, 3);                      /* TAPE EP, softened: a slower touch, a longer tail */
+    song.trk[T_KEY].p[PY_ATT] = 8; song.trk[T_KEY].p[PY_REL] = 900; song.trk[T_KEY].p[PY_TINE] = 25;
+    sound_patch(T_SYN, 4);                      /* DETUNE PAD */
+    for (t = T_BAS; t < NT; t++) { song.trk[t].p[PY_CHORD] = 0; song.trk[t].p[PY_CTR] = 0; }
+    song.trk[T_BRK].p[PB_SRC] = 0;
+    song.bpm = 90; song.swing = 54; song.space = 40; song.pump = 0; song.key = 0;
     song.nchain = 1;
     song.chain[0] = 0;
     song.cur = 0;
