@@ -59,6 +59,28 @@ int main(void)
     check("boot: WND-1's tracker (TRK), the six tracks live on JIANT", page == PG_TRK && trk_live == NTRK);
     check("the tabs: HOM SAV CHD MIX GEN SEQ EDT MST; the third track PER",
           !strcmp(PG_NAME[0], "HOM") && !strcmp(PG_NAME[5], "SEQ") && !strcmp(PG_NAME[6], "EDT") && !strcmp(TRK_ID[2], "PER"));
+    {   /* (XENOISE) the song's form: SONG by default; SHUFFLE another that makes sense */
+        uint32_t k, j, ok = 1, differ = 0;
+        uint8_t was[16];
+        check("a new song plays the SONG form (INTRO VERSE CHORUS .. OUTRO)", form_of() == 0 && wb_song.chain[0] == S_INTRO &&
+              wb_song.chain[wb_song.nchain - 1u] == S_OUTRO && !strcmp(SECT_NAME[S_CHORUS], "CHORUS"));
+        for (k = 0; k < 200u; k++) {
+            memcpy(was, wb_song.chain, 16);
+            form_shuffle();
+            for (j = 0; j < wb_song.nchain; j++) {
+                uint8_t c = wb_song.chain[j];
+                if (c == S_DROP && (!j || (wb_song.chain[j - 1u] != S_BUILD && wb_song.chain[j - 1u] != S_DROP))) ok = 0;
+                if (c == S_INTRO && j) ok = 0;
+                if (c == S_OUTRO && j + 1u != wb_song.nchain) ok = 0;
+            }
+            if (wb_song.nchain < 3u || wb_song.nchain > 16u) ok = 0;
+            if (memcmp(was, wb_song.chain, wb_song.nchain)) differ++;
+        }
+        printf("wb:   SHUFFLE x200: %u changed the form; the last: %u parts\n", differ, wb_song.nchain);
+        check("SHUFFLE: a drop after a build, an intro first, an outro last, 3..16 parts; a new form each time",
+              ok && differ >= 190u);
+        form_set(0);
+    }
     tap(B_FX);
     check("FX: a tap opens PERFORM, it stays", wb_fx_on());
     tap(B_FX);
@@ -79,8 +101,11 @@ int main(void)
         check("  SAVE, OCT+: saved to the slot", slot_ok[s0] != 0);
     }
     tap(B_HOME);
+    wb_song.loop = 1;                           /* (XENOISE: the CHORUS, every track in it; the INTRO leaves the synth out) */
+    wb_song.cur = S_CHORUS;
     tap(B_PLAY);
     r = rms_of(8000, &peak, wav, &wn);
+    wb_song.loop = 0;
     printf("wb:   the song: rms %.4f, peak %.3f; notes a track: %u %u %u %u %u %u; BPM %u, pattern %c\n", sqrt(r), peak,
            xj_count[0], xj_count[1], xj_count[2], xj_count[3], xj_count[4], xj_count[5], wb_song.bpm, 'A' + wb_song.cur);
     write_wav("build/host/wb_play.wav", wav, wn);
@@ -99,6 +124,26 @@ int main(void)
         printf("wb:   after STOP: rms %.4f, playing %u, voices active %u\n", sqrt(r), sq_play, act);
     }
     check("STOP: quiet again after 3 s", sqrt(r) < 0.005);
+    {   /* (XENOISE) the master's VOLUME, AGE and CRUSH (MST): xn_wb.c xn_master, fx.c */
+        double full, half, worn;
+        float pk2;
+        tap(B_PLAY);
+        run_ms(1000);
+        full = sqrt(rms_of(4000, &peak, 0, &wn));
+        wb_song.mvol = 50;
+        run_ms(300);
+        half = sqrt(rms_of(4000, &peak, 0, &wn));
+        printf("wb:   VOLUME 100 %%: rms %.4f; 50 %%: %.4f (%.1f dB)\n", full, half, 20 * log10(half / full));
+        check("MST VOLUME 50 %: the master ~12 dB down (square law)", half < full * 0.4 && half > full * 0.1);
+        wb_song.mvol = 100; wb_song.age = 100; wb_song.crush = 100;
+        run_ms(300);
+        worn = sqrt(rms_of(4000, &pk2, 0, &wn));
+        printf("wb:   AGE 100 %%, CRUSH 6 BIT: rms %.4f, peak %.3f\n", worn, pk2);
+        check("MST AGE and CRUSH at full: it plays on, in range", worn > 0.01 && pk2 < 1.0f && xn_age == 100u && xn_crush == 100u);
+        wb_song.age = wb_song.crush = 0;
+        tap(B_PLAY);
+        run_ms(3000);
+    }
     if (getenv("WB_PER")) {   /* debug: PER alone */
         uint32_t j, w1 = 0, l; float pk;
         song_new(0);

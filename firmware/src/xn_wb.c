@@ -92,6 +92,60 @@ static void xj_tone(uint32_t jt, int32_t cut, int32_t glide)   /* the part's fil
     t->p[P_FCUT] = (int16_t)clamp(cut, 20, 127);
     t->p[P_GLIDE] = (int16_t)clamp(glide, 0, 127);
 }
+/* ---- (XENOISE) the master's AGE, CRUSH and VOLUME (WND-1's MST page; JIANT has none of them as such). VOLUME scales
+ * JIANT's master gain after its leveler (fx.c mix_block's mg: before it, the leveler would ride it back up); AGE and
+ * CRUSH work on the mix, the reverb's return in it, after the DJ filter and the clipper (fx.c, xn_master):
+ *   AGE    tape: darker (a pole from open down to ~2.5 kHz), wow (0.6 Hz) and flutter (7 Hz) from a short line
+ *   CRUSH  16 - CRUSH / 10 bits (6 to 15; under 6: CLEAN), the rate held down past 40 (to a fifth)
+ * The mix there is Q15 at full MASTER (master_out's scale); the tape's line holds it as 16 bits */
+static int32_t xn_mvol_q12 = 4096;                /* (xs_mix: VOLUME, square law, 100 % as 0 dB) */
+static uint8_t xn_age, xn_crush;
+#define XN_WOW 256u
+static int16_t xn_wow[2][XN_WOW];
+static uint32_t xn_wow_w, xn_wow_ph, xn_flut_ph, xn_hold_n;
+static int32_t xn_lp[2], xn_hold[2];
+static void xn_master(int32_t *l, int32_t *r, const int32_t *wet, uint32_t n)
+{
+    uint32_t i, c, bits = 16u - xn_crush / 10u, sh = xn_crush >= 6u ? 16u - bits : 0u;
+    uint32_t hold = xn_crush > 40u ? 1u + (xn_crush - 40u) / 15u : 1u;
+    int32_t a = 32768 - (int32_t)xn_age * 228, dep = (int32_t)xn_age * 77;   /* (the pole, Q15; wow's depth, Q8 samples) */
+    if (!xn_age && !sh && hold == 1u)
+        return;
+    for (i = 0; i < n; i++) {
+        int32_t x[2];
+        x[0] = l[i] + wet[i];
+        x[1] = r[i] + wet[i];
+        if (xn_age) {                               /* the tape: through the line, read wavering */
+            int32_t d = 32 * 256 + ((dep * sine_i(xn_wow_ph)) >> 15) + ((dep / 8 * sine_i(xn_flut_ph)) >> 15);
+            uint32_t p0 = xn_wow_w - (uint32_t)(d >> 8), f = (uint32_t)d & 255u;
+            xn_wow_ph += 58434u;                    /* (0.6 Hz) */
+            xn_flut_ph += 681725u;                  /* (7 Hz) */
+            for (c = 0; c < 2u; c++) {
+                int32_t y0, y1;
+                xn_wow[c][xn_wow_w % XN_WOW] = (int16_t)clamp(x[c], -32768, 32767);
+                y0 = xn_wow[c][p0 % XN_WOW];
+                y1 = xn_wow[c][(p0 - 1u) % XN_WOW];
+                x[c] = y0 + (((y1 - y0) * (int32_t)f) >> 8);
+                xn_lp[c] += ((clamp(x[c] - xn_lp[c], -131072, 131071) >> 2) * a) >> 13;   /* (no 64 bits) */
+                x[c] = xn_lp[c];
+            }
+            xn_wow_w++;
+        }
+        if (hold > 1u) {                            /* the rate held */
+            if (xn_hold_n == 0u) { xn_hold[0] = x[0]; xn_hold[1] = x[1]; }
+            xn_hold_n = (xn_hold_n + 1u) % hold;
+            x[0] = xn_hold[0];
+            x[1] = xn_hold[1];
+        }
+        if (sh) {                                   /* the bits (of the mix's full scale, Q15: master_out) */
+            x[0] = (x[0] >> sh) << sh;
+            x[1] = (x[1] >> sh) << sh;
+        }
+        l[i] = x[0] - wet[i];                       /* (the return stays where fx.c adds it) */
+        r[i] = x[1] - wet[i];
+    }
+}
+
 static int xj_fm6_elsewhere(uint32_t jt)          /* FM6 on another track already (one at most: its CPU) */
 {
     uint32_t k;
@@ -275,7 +329,7 @@ static void xs_mix(void)
 {
     static uint32_t sig;
     uint32_t t, h = xs_hash(song.trk, sizeof song.trk) ^ xs_hash(xs_trim, sizeof xs_trim) ^ song.bpm ^ song.space << 8 ^ song.pump << 16 ^
-                    (uint32_t)song.mvol << 24 ^ punch_lpf * 77u ^ punch_dub * 131u ^ punch_wash * 997u;
+                    (uint32_t)song.mvol << 24 ^ song.age * 40009u ^ song.crush * 7001u ^ punch_lpf * 77u ^ punch_dub * 131u ^ punch_wash * 997u;
     static const uint8_t JT[NT] = {XJ_BRK, XJ_DRM, XJ_DRM, XJ_BAS, XJ_KEY, XJ_SYN};
     if (h == sig) return;
     sig = h;
@@ -298,6 +352,9 @@ static void xs_mix(void)
     xj_global(G_DFDBK, punch_dub ? 105 : 60);
     xj_global(G_DUCK, song.pump);
     xj_global(G_DJF, punch_lpf ? -44 : 0);
+    xn_mvol_q12 = 4096 * song.mvol * song.mvol / 10000;   /* (the master: xn_master) */
+    xn_age = song.age;
+    xn_crush = song.crush;
 }
 
 /* ---- the hooks: JIANT's boot, main loop and audio interrupt (main.c, seq.c) */

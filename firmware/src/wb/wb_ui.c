@@ -20,7 +20,7 @@ static const char *const PG_HINT[PG_N] = {"SELECT ROW, PLAY PADS", "K2 GENRE, SA
                                           "LEVEL, PAN, SENDS", "CHANCE, MUTATION, DRIFT", "WHITE KEY: GO TO PART",
                                           "EDIT THE SOUND", "TEMPO, SWING, METER"};
 static const uint8_t PG_BTN[PG_N] = {BTN_HOME, BTN_SAVE, BTN_SEL, BTN_ENV, BTN_LFO, BTN_SEQ, BTN_EDIT, BTN_GLO};
-static const char *const SECT_NAME[NPAT] = {"MAIN", "VARY", "DOWN", "BUILD", "GROOVE", "HALF", "CHOP", "OUTRO"};
+static const char *const SECT_NAME[NPAT] = {"INTRO", "VERSE", "CHORUS", "VERSE2", "BRIDGE", "BUILD", "DROP", "OUTRO"};   /* (XENOISE: a song's parts) */
 
 /* ---- the colours: Renoise's dark warm greys, orange for what plays, blue for what is picked, cyan for the chords */
 #define C_BG RGB(24, 22, 20)
@@ -437,10 +437,7 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
             str_cat(lab, "PATTERN");
             if (arr_pos >= song.nchain) { str_cat(val, "-"); if (!dd || song.nchain >= 16u) return 1; song.chain[song.nchain] = song.chain[song.nchain - 1u]; song.nchain++; arr_pos = (uint8_t)(song.nchain - 1u); }
             if (dd) { song.chain[arr_pos] = (uint8_t)clampi((int32_t)song.chain[arr_pos] + dd, 0, NPAT - 1); touch(); }
-            val[0] = (char)('A' + song.chain[arr_pos] % NPAT);
-            val[1] = ' ';
-            val[2] = 0;
-            str_cat(val, SECT_NAME[song.chain[arr_pos] % NPAT]);
+            str_cat(val, SECT_NAME[song.chain[arr_pos] % NPAT]);   /* (XENOISE: its name; its letter on the tile) */
         } else if (i == 2u) {
             str_cat(lab, "PARTS");
             if (dd) {
@@ -451,10 +448,17 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
                 touch();
             }
             fmt_u(val, song.nchain, 0);
-        } else {
-            str_cat(lab, "BPM");
-            if (dd) { song.bpm = (uint8_t)clampi(song.bpm + dd, 50, 200); touch(); }
-            fmt_u(val, song.bpm, 0);
+        } else {                                /* (XENOISE) FORM: the chain as one of the forms (BPM: on MST) */
+            int f = form_of();
+            str_cat(lab, "FORM");
+            if (dd) {
+                f = f < 0 ? 0 : clampi(f + (dd > 0 ? 1 : -1), 0, (int32_t)WB_NFORM - 1);
+                form_set((uint32_t)f);
+                if (sq_chainpos >= song.nchain) sq_chainpos = 0;
+                if (arr_pos > song.nchain) arr_pos = song.nchain;
+                touch();
+            }
+            str_cat(val, f < 0 ? "CUSTOM" : FORM_NAME[f]);
         }
         return 1;
     case PG_GEN: {
@@ -750,7 +754,7 @@ static void fn_press(uint32_t i)
             *p = seed_pat;
             seed_of = 0xFF;
             toast("PATTERN RESTORED");
-        } else { seed_take(pi); gen_pattern(pi, pi); toast("NEW PATTERN - RESTORE UNDOES"); }
+        } else { seed_take(pi); gen_pattern(pi, sect_v(pi)); toast("NEW PATTERN - RESTORE UNDOES"); }
         touch();
         break;
     case PG_MIX:
@@ -916,7 +920,15 @@ static void arr_fn(uint32_t i)
         if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
         toast("PART DELETED");
     } else if (i == 2u) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE SEQUENCE"); }
-    else { arr_launch(arr_pos); return; }
+    else {                                      /* (XENOISE) SHUFFLE: another form (a part goes on with a white key) */
+        char buf[24];
+        form_shuffle();
+        if (sq_chainpos >= song.nchain) sq_chainpos = 0;
+        if (arr_pos > song.nchain) arr_pos = song.nchain;
+        buf[0] = 0;
+        str_cat(fmt_u(str_cat(buf, "SHUFFLED: "), song.nchain, 0), " PARTS");
+        toast(buf);
+    }
     touch();
 }
 
@@ -1480,10 +1492,10 @@ static void draw_arr(void)
             s[0] = 0;
             fmt_u(s, k + 1u, 2);
             g_text(x + 3, y + 2, s, play ? C_BG : C_MUTED, T_CROP);
-            s[0] = (char)('A' + pt);
-            s[1] = 0;
-            g_text(x + 3, y + 14, s, play ? C_BG : C_ORANGE, T_CROP | T_BOLD);
-            g_text(x + 14, y + 14, SECT_NAME[pt], play ? C_BG : C_TXT, T_CROP);
+            s[0] = (char)('A' + pt);            /* (XENOISE: the pattern's letter by the number, its part's name below, */
+            s[1] = 0;                           /* the tile's width) */
+            g_text(x + 22, y + 2, s, play ? C_BG : C_ORANGE, T_CROP | T_BOLD);
+            g_text(x + 3, y + 14, SECT_NAME[pt], play ? C_BG : C_TXT, T_CROP);
         } else {
             g_rect(x, y, 56, 28, C_ROW);
             if (k == n) g_text_c(x + 28, y + 8, "+", C_MUTED, T_CROP);
@@ -1625,7 +1637,7 @@ static void draw_info(void)
     g_text(236 - g_text_w(s), INFO_Y + 2, s, C_CYAN, T_CROP | T_BOLD);
 }
 static const char *perf_fn(uint32_t i) { return (const char *const[]){perf_solo ? "SOLO" : "MUTE", "", sit_on ? "SIT OFF" : "SIT", "ALL ON"}[i]; }
-static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"INSERT", "DELETE", song.loop ? "SEQ" : "LOOP", "GO"}[i]; }
+static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"INSERT", "DELETE", song.loop ? "SEQ" : "LOOP", "SHUFFLE"}[i]; }
 static void draw_knobs(void)
 {
     uint32_t i;

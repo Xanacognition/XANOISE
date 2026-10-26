@@ -2124,11 +2124,18 @@ static __attribute__((noinline)) void stem_fx_block(uint32_t n)
         stem_fx[1][i] = wr + fx_sr[i];
     }
 }
+#if defined(XN_WB) && XN_WB
+static int32_t xn_mvol_q12;                              /* (XENOISE: xn_wb.c) */
+static void xn_master(int32_t *l, int32_t *r, const int32_t *wet, uint32_t n);
+#endif
 /* the master with the FX layer's effects between its level and master_out (perform.c) */
 static __attribute__((noinline)) void perf_master(int32_t *out, uint32_t n)
 {
     uint32_t i;
     int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
+#if defined(XN_WB) && XN_WB
+    mg = (mg * xn_mvol_q12) >> 12;                      /* (XENOISE) the master's VOLUME (xn_wb.c) */
+#endif
     for (i = 0; i < n; i++) {
         mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
@@ -2536,6 +2543,10 @@ static __attribute__((noinline)) void mix_block(int32_t *out, uint32_t n)   /* (
         djf_block(n);
     if (clip_g)
         clip_block(n);
+#if defined(XN_WB) && XN_WB
+    xn_master(mix_l, mix_r, wet, n);                    /* (XENOISE) the master's AGE and CRUSH (xn_wb.c) */
+    mg = (mg * xn_mvol_q12) >> 12;                      /* .. its VOLUME, after the leveler's measure */
+#endif
     t0 = MC_TICKS();
     prf_blk[PRF_POST] = t0 - t1;
 #ifndef FX_HUSH_OFF

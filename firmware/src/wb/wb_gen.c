@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Wonderblue-OS: writing music. A genre's roll (tempo, swing, key, progression, breaks, drum lanes, the parts' styles
- * and sounds), its eight sections A..H (main, variation, breakdown, build, other groove, half-time, chopped, outro),
+ * and sounds), its eight sections A..H (XENOISE: a song's parts, intro, verse, chorus, second verse, bridge, build, drop,
+ * outro; WND-1's: main, variation, breakdown, build, other groove, half-time, chopped, outro) and the form they play in,
  * FILL and DICE on one track, the chord progressions (moving bass, keys and synth to new chords, keeping their rhythm),
  * and SIT (the machine plays itself). The same rules as the browser version (z-noise.html), in integers. */
 
@@ -282,6 +283,75 @@ static void mutate_track(uint32_t pi, uint32_t t, uint32_t a)   /* a: 0..100 */
     }
 }
 
+/* ---- (XENOISE) the song's form. The eight patterns are its parts; the chain plays them as a song (SEQ: FORM picks
+ * one of four, SHUFFLE writes another that still makes sense: an intro first, verses before choruses, a build before
+ * every drop, an outro last; or a jam's loop of verses and choruses) */
+enum { S_INTRO, S_VERSE, S_CHORUS, S_VERSE2, S_BRIDGE, S_BUILD, S_DROP, S_OUTRO };
+#define WB_NFORM 4u
+static const char *const FORM_NAME[WB_NFORM] = {"SONG", "CLUB", "JAM", "EPIC"};
+static const uint8_t FORM_LEN[WB_NFORM] = {10, 8, 6, 12};
+static const uint8_t FORM[WB_NFORM][16] = {
+    {S_INTRO, S_VERSE, S_CHORUS, S_VERSE2, S_CHORUS, S_BRIDGE, S_BUILD, S_DROP, S_CHORUS, S_OUTRO},
+    {S_INTRO, S_BUILD, S_DROP, S_VERSE, S_BRIDGE, S_BUILD, S_DROP, S_OUTRO},
+    {S_VERSE, S_CHORUS, S_VERSE2, S_CHORUS, S_BRIDGE, S_CHORUS},
+    {S_INTRO, S_VERSE, S_VERSE2, S_CHORUS, S_BRIDGE, S_VERSE, S_CHORUS, S_BUILD, S_DROP, S_DROP, S_CHORUS, S_OUTRO},
+};
+static void form_set(uint32_t f)
+{
+    uint32_t i;
+    f %= WB_NFORM;
+    for (i = 0; i < FORM_LEN[f]; i++) song.chain[i] = FORM[f][i];
+    song.nchain = FORM_LEN[f];
+}
+static int form_of(void)                        /* the form the chain is (-1: the user's own) */
+{
+    uint32_t f, i;
+    for (f = 0; f < WB_NFORM; f++) {
+        if (song.nchain != FORM_LEN[f]) continue;
+        for (i = 0; i < FORM_LEN[f] && song.chain[i] == FORM[f][i]; i++) {}
+        if (i == FORM_LEN[f]) return (int)f;
+    }
+    return -1;
+}
+static void form_shuffle(void)
+{
+    uint8_t c[24];
+    uint32_t n, k, tries, cycles, drop_at, bridge_at, i;
+    for (tries = 0; tries < 8u; tries++) {
+        n = 0;
+        cycles = 2u + rnd(2);
+        drop_at = rnd(cycles);
+        bridge_at = rnd(cycles);
+        if (rnd(4)) c[n++] = S_INTRO;
+        for (k = 0; k < cycles; k++) {
+            if (k == 0u || rnd(3)) c[n++] = (uint8_t)(rnd(2) ? S_VERSE : S_VERSE2);
+            if (!rnd(4)) { uint8_t pv = c[n - 1u]; c[n++] = (uint8_t)(pv == S_VERSE ? S_VERSE2 : S_VERSE); }
+            c[n++] = S_CHORUS;
+            if (k + 1u == cycles && rnd(2)) c[n++] = S_CHORUS;
+            if (k == bridge_at && k + 1u < cycles) c[n++] = S_BRIDGE;
+            if (k == drop_at) {
+                c[n++] = S_BUILD;
+                c[n++] = S_DROP;
+                if (!rnd(3)) c[n++] = S_DROP;
+            }
+        }
+        if (rnd(4)) c[n++] = S_OUTRO;
+        if (n > 16u) { c[15] = c[n - 1u]; n = 16u; }   /* (the end kept: an outro stays the last) */
+        if (n != song.nchain) break;
+        for (i = 0; i < n && c[i] == song.chain[i]; i++) {}
+        if (i < n) break;                       /* (another than the one there) */
+    }
+    for (i = 0; i < n; i++) song.chain[i] = c[i];
+    song.nchain = (uint8_t)n;
+}
+/* the recipe each part is written by (gen_pattern's v): the bridge a breakdown or half-time, the song decides */
+static uint32_t sect_v(uint32_t pi)
+{
+    static const uint8_t V[NPAT] = {8, 0, 9, 4, 2, 3, 6, 7};
+    pi %= NPAT;
+    return pi == S_BRIDGE ? ((song.bpm + song.genre) & 1u ? 5u : 2u) : V[pi];
+}
+
 /* ---- a section A..H into pattern pi */
 static void gen_pattern(uint32_t pi, uint32_t v)
 {
@@ -320,6 +390,20 @@ static void gen_pattern(uint32_t pi, uint32_t v)
         case 6:
             dens = dens + 25u > 100u ? 100u : dens + 25u;
             if (t == T_BRK && brk_on) mode = g->storm ? WM_STORM : WM_CHOP;
+            break;
+        case 8:                                 /* (XENOISE) INTRO: no kick, the hats alone, the break thin, pads */
+            if (t == T_KIK) mode = WM_OFF;
+            if (t == T_DRM) sl = "";
+            if (t == T_BRK && brk_on) mode = WM_SPARSE;
+            if (t == T_BAS) mode = WL_SUB;
+            if (t == T_KEY) mode = chd ? WK_PADS : song_mode(t, 1);
+            if (t == T_SYN) mode = WK_OFF;
+            dens = dens > 20u ? dens - 20u : 0u;
+            break;
+        case 9:                                 /* (XENOISE) CHORUS: the main groove fuller, a lead over it */
+            dens = dens + 20u > 100u ? 100u : dens + 20u;
+            if (t == T_KEY && !chd) mode = WK_LEAD;
+            if (t == T_SYN && chd) mode = WK_LEAD;
             break;
         case 7:
             if (t == T_KIK) mode = WM_OFF;
@@ -432,7 +516,7 @@ static void song_new(uint32_t gi)
     song.crush = 0;
     song.space = g->space;
     song.pump = g->pump;
-    song.mvol = 85;
+    song.mvol = 100;                            /* (XENOISE: VOLUME is the master's now, 100 % its 0 dB) */
     for (t = 0; t < NT; t++) track_defaults(t);
     {                                           /* the sounds from the genre's pools: kick, snare, hats, bass, keys */
         static const uint8_t TO[5] = {T_KIK, T_DRM, T_DRM, T_BAS, T_KEY};
@@ -457,9 +541,8 @@ static void song_new(uint32_t gi)
     }
     roll_new();
     song_name();
-    for (i = 0; i < NPAT; i++) gen_pattern(i, i);
-    song.nchain = 10;
-    for (i = 0; i < 10u; i++) song.chain[i] = WB_SONG_CHAIN[i];
+    for (i = 0; i < NPAT; i++) gen_pattern(i, sect_v(i));
+    form_set(0);                                /* (XENOISE) SONG: intro, verse, chorus .. outro */
     song.cur = 0;
     seed_of = 0xFF;
 }
