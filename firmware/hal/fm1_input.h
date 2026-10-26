@@ -514,7 +514,7 @@ static void fm1_led_anim_start(uint32_t glow)
     fm1__an_f = 1;
 }
 static int fm1_led_anim_on(void) { return fm1__an_f != 0u; }
-static void fm1_input_tick(void)
+static __attribute__((noinline)) void fm1_input_tick(void)   /* (XENOISE: noinline, its loops its own: TIMER5's budget) */
 {
     uint32_t p = fm1__tick_col, n = p + 1u == FM1_NCOL ? 0u : p + 1u;
     uint32_t t0 = fm1_ticks(), g = t0 - fm1_in_stat.last, b = 0;

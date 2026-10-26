@@ -84,7 +84,7 @@ static void uart_midi_take(uint32_t n)
         um.bytes++;
     }
 }
-static void uart_midi_poll(void)                   /* TIMER5 ISR, same context as usb_poll */
+static __attribute__((noinline)) void uart_midi_poll(void)   /* TIMER5 ISR, same context as usb_poll (XENOISE: noinline) */
 {
     uart_midi_take(fm1_uart1_rx_take());
 }
