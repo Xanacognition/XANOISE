@@ -448,7 +448,7 @@ static void song_new(uint32_t gi)
     song.trk[T_KEY].p[PY_CHORD] = g->chords ? (int16_t)(3 + rnd(2)) : 0;
     song.trk[T_SYN].p[PY_CHORD] = g->chords ? 0 : (int16_t)(2 + rnd(3));
     song.trk[T_KEY].p[PY_CTR] = g->nctr ? g->ctr[rnd(g->nctr)] : 0;
-    {   /* (XANOISE) the counter voice: a sound of the genre's own keys, not KEY's (WND-1: one of six bright ones at random,
+    {   /* (XENOISE) the counter voice: a sound of the genre's own keys, not KEY's (WND-1: one of six bright ones at random,
          * over any genre: it grated) */
         uint32_t n = g->nsnd[4], k = n ? g->snd[4][rnd(n)] : 6u, tries;
         for (tries = 0; tries < 6u && n > 1u && k == song.trk[T_KEY].patch; tries++) k = g->snd[4][rnd(n)];

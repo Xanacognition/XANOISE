@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Xanacognition (XANOISE) */
-/* XANOISE: WND-1's sequencer (its wb_dsp.c, the voices and the master left out) playing JIANT's engines. A row's cells
+ * Copyright (C) 2026 Xanacognition (XENOISE) */
+/* XENOISE: WND-1's sequencer (its wb_dsp.c, the voices and the master left out) playing JIANT's engines. A row's cells
  * become notes on JIANT's tracks through xj_on / xj_off (xn_wb.c), the gates as note-offs counted down here:
  *   BRK          JIANT track 1 (XJ_BRK), DRUM: the slice's hits of the break (wb_brk.h: WND-1's breaks as hits)
  *   KIK, DRM     JIANT track 2 (XJ_DRM), DRUM: the kick; the snare, clap, closed and open hat

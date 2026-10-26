@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Xanacognition (XANOISE) */
-/* XANOISE: Wonderblue-OS (WND-1) over JIANT FM. WND-1's front end as it was (wb/: its song, pages, panel, LEDs,
+ * Copyright (C) 2026 Xanacognition (XENOISE) */
+/* XENOISE: Wonderblue-OS (WND-1) over JIANT FM. WND-1's front end as it was (wb/: its song, pages, panel, LEDs,
  * generator, sequencer and store, from github.com/Xanacognition/WND-1), JIANT's sound under it: the engines, the
  * voices, the effects and the mix, on both cores, the hot code in RAM. WND-1's own voices and master are not here
  * (they overran the audio interrupt on the FM-1); its sequencer plays JIANT's tracks (wb/wb_seq.c), its sounds pick

@@ -291,7 +291,7 @@ static void fm1_main(void)
     }
 #endif
 #if XN_WB
-    wb_init();                                /* (XANOISE) Wonderblue's song (its autosave), its sounds on JIANT's tracks */
+    wb_init();                                /* (XENOISE) Wonderblue's song (its autosave), its sounds on JIANT's tracks */
 #else
     autosave_boot(boot_clean);                /* (1.2) the last session's music, under the splash */
 #endif
@@ -396,7 +396,7 @@ static void fm1_main(void)
         felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
 #if XN_WB
-        wb_frame();                                   /* (XANOISE) Wonderblue's panel, screen, LEDs, store; its sounds */
+        wb_frame();                                   /* (XENOISE) Wonderblue's panel, screen, LEDs, store; its sounds */
         settings_poll();
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 4u) {}                    /* (its own frame rate: 30 a second, app_step) */

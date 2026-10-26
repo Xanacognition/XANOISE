@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Xanacognition (XANOISE)
-"""XANOISE: where the flash goes. The firmware's symbols by size (objdump -t), each section's total, and the totals by
+# Copyright (C) 2026 Xanacognition (XENOISE)
+"""XENOISE: where the flash goes. The firmware's symbols by size (objdump -t), each section's total, and the totals by
 family: a symbol's name prefix up to its first '_' (ui_, gen_, fm6_ ..), so what a source file costs shows up.
   size_map.py OBJDUMP felucca.elf"""
 import re

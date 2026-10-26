@@ -23,7 +23,7 @@
 
 #define FELUCCA_WEB 1
 #ifndef XN_WB
-#define XN_WB 1                          /* (XANOISE) Wonderblue-OS over JIANT, as src/felucca.c (JIANT's tests: 0) */
+#define XN_WB 1                          /* (XENOISE) Wonderblue-OS over JIANT, as src/felucca.c (JIANT's tests: 0) */
 #endif
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1                    /* as src/felucca.c: MENU > USB SERIAL is there (nothing behind it) */
@@ -275,7 +275,7 @@ static void web_power_on(void)
     audio_init();
     boot_leds();                          /* main.c: the power-on LED sweep, from the scan's start */
 #if XN_WB
-    wb_init();                            /* main.c (XANOISE): Wonderblue's song, its sounds on JIANT's tracks */
+    wb_init();                            /* main.c (XENOISE): Wonderblue's song, its sounds on JIANT's tracks */
 #else
     autosave_boot(boot_clean);            /* main.c: the last session's music (1.2, project.c) */
 #endif
@@ -293,7 +293,7 @@ static void web_frame(void)
     master_poll();
     felucca_dbg.ui_frames++;
 #if XN_WB
-    wb_frame();                           /* main.c (XANOISE): Wonderblue's panel, screen, LEDs, store */
+    wb_frame();                           /* main.c (XENOISE): Wonderblue's panel, screen, LEDs, store */
     settings_poll();
 #else
     ui_input();
@@ -338,7 +338,7 @@ static void web_ms(void)
         lcd_fill(0, 0, 240, 240, T_BG);
         web_last_frame = fm1_ms - 15u;
     }
-    if (fm1_ms - web_last_frame >= (XN_WB ? 4u : 15u)) {   /* main.c: a pass of the loop (XANOISE: every 4 ms) */
+    if (fm1_ms - web_last_frame >= (XN_WB ? 4u : 15u)) {   /* main.c: a pass of the loop (XENOISE: every 4 ms) */
         web_last_frame = fm1_ms;
         web_frame();
     } else if (!XN_WB) {

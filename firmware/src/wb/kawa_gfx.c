@@ -5,7 +5,7 @@
  * in the drawing buffer, byte-swapped for the panel on the way out. */
 #define BAND_H 40u
 #define NBAND 6u
-/* (XANOISE) the band being drawn and the two send buffers, all three in JIANT's cv_px (gfx.c, 72 KiB): no RAM of their own */
+/* (XENOISE) the band being drawn and the two send buffers, all three in JIANT's cv_px (gfx.c, 72 KiB): no RAM of their own */
 #define g_buf (cv_px + 2u * 240u * BAND_H)
 #define g_txb (cv_px + 240u * BAND_H)
 typedef char wb_bands_fit[3u * 240u * BAND_H <= CV_MAX ? 1 : -1];
@@ -93,7 +93,7 @@ static void g_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
     }
 }
 
-/* the screen's font: (XANOISE) CLAIRE alone (WND-1 offered BASE, DOUCE, CLAIRE, 8-BIT: OPTIONS, KNOB 4; the others
+/* the screen's font: (XENOISE) CLAIRE alone (WND-1 offered BASE, DOUCE, CLAIRE, 8-BIT: OPTIONS, KNOB 4; the others
  * cost 37 KiB of flash); each a small one (8 x 16) and a large one (16 x 32) */
 #define NFONT 4u
 enum { FN_BASE, FN_DOUCE, FN_CLAIRE, FN_8BIT };

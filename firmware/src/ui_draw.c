@@ -1785,8 +1785,14 @@ static void draw_columns(void)
  * SPL_WRITE ms (splash_write, main.c's splash loop; MENU > ANIM OFF: whole at once). Lines only, the canvas
  * redrawn a step (~700 short lines). In the saved palette (settings_init before it) */
 #include "ui_signature.h"
+#if defined(XN_WB) && XN_WB
+#include "xn_splash.c"                              /* (XENOISE) a mecha's boot: its scene, then held */
+#define SPL_WRITE XS_END
+#define SPL_HOLD 300u
+#else
 #define SPL_WRITE 800u                              /* ms: the signature written (was 900; 0.6.51: 600 -> 800) */
 #define SPL_HOLD 900u                               /* .. then shown whole, before the UI (was 1100; 0.6.51: 500 -> 900) */
+#endif
 #define SPL_SY 40                                   /* the signature's canvas on the screen (240 x SIG_H + 12) */
 #define SPL_TY 186                                  /* the two lines under it */
 static const char *const SPLASH_LINES[] = {FELUCCA_VERSION, "by Juan Jiant"};
@@ -1918,6 +1924,10 @@ static void splash_sig(int32_t px, uint32_t ms)
 static void draw_splash(void)
 {
     uint32_t k;
+#if defined(XN_WB) && XN_WB
+    xs_splash(spl_anim && !(ui_prefs & PREF_ANIM_OFF) ? 0u : XS_END);
+    return;
+#endif
     lcd_fill(0, 0, 240, 240, T_BG);
     cv_begin(240, 36, T_BG);
     for (k = 0; k < 2u; k++)
@@ -1931,6 +1941,10 @@ static void splash_write(uint32_t ms)
 {
     if (!spl_anim || (ui_prefs & PREF_ANIM_OFF))
         return;
+#if defined(XN_WB) && XN_WB
+    xs_splash(ms);
+    return;
+#endif
     splash_sig(ms >= SPL_WRITE ? 0x7FFFFFFF : (int32_t)((int64_t)sig_len() * ms / SPL_WRITE), ms);
     lcd_sync();
 }

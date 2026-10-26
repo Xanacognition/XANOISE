@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Xanacognition (XANOISE)
-"""XANOISE: WND-1's six breaks as hits for JIANT's DRUM engine (no samples: they would not fit beside JIANT). The lanes
+# Copyright (C) 2026 Xanacognition (XENOISE)
+"""XENOISE: WND-1's six breaks as hits for JIANT's DRUM engine (no samples: they would not fit beside JIANT). The lanes
 are WND-1's (tools/gen_breaks.py BREAKS there: 16 steps an instrument, '.' or a velocity 1-9, an articulation letter,
 ':' a roll, ';' a drag, '^' a flam). A cell of the BRK track names a slice (a 16th of the bar); playing it plays that
 step's hits on the DRUM lanes (firmware/src/wb/wb_seq.c brk_slice).

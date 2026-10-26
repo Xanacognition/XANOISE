@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Xanacognition (XANOISE)
+# Copyright (C) 2026 Xanacognition (XENOISE)
 # The firmware's source as LLVM IR with the host's clang: every function it calls but does not define must be one the
 # assembly gives (the ISRs, the second core's entry). A libc function (abs, memcpy ..) the FM-1 has not shows here,
 # with its name, before JieLi's linker only says "ld failed".   tools/check_extern.sh  (after build.py's generated headers)

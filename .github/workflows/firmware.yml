@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# XANOISE: build the installable package (.fwsc) with JieLi's toolchain on every push of the xanoise branch, attach it
-# to the run, and publish it as the pre-release "xanoise-latest" to download and install from.
+# XENOISE: build the installable package (.fwsc) with JieLi's toolchain on every push of the xanoise branch, attach it
+# to the run, and publish it as the pre-release "xenoise-latest" to download and install from.
 name: firmware
 on:
   push:
@@ -48,18 +48,18 @@ jobs:
           python3 tools/size_map.py "$HOME/.jieli/toolchain/common/bin/objdump" build/felucca.elf | tee size_map.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: xanoise
+          name: xenoise
           path: build/felucca.fwsc
           if-no-files-found: error
-      - name: publish the package (pre-release xanoise-latest)
+      - name: publish the package (pre-release xenoise-latest)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp build/felucca.fwsc xanoise.fwsc
-          gh release view xanoise-latest >/dev/null 2>&1 || gh release create xanoise-latest --prerelease --target "$GITHUB_SHA" \
-            --title "XANOISE (latest build of the xanoise branch)" \
+          cp build/felucca.fwsc xenoise.fwsc
+          gh release view xenoise-latest >/dev/null 2>&1 || gh release create xenoise-latest --prerelease --target "$GITHUB_SHA" \
+            --title "XENOISE (latest build of the xanoise branch)" \
             --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with JIANT's web installer (Use a local file) or tools/fm1_install.py."
-          gh release upload xanoise-latest xanoise.fwsc size_map.txt --clobber
+          gh release upload xenoise-latest xenoise.fwsc size_map.txt --clobber
       - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
         run: |
           pip install numpy

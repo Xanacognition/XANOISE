@@ -1135,7 +1135,7 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
-/* (XANOISE) XN_WB: Wonderblue-OS's front end over JIANT's sound (xn_wb.c): the keys are its own, its sequencer runs
+/* (XENOISE) XN_WB: Wonderblue-OS's front end over JIANT's sound (xn_wb.c): the keys are its own, its sequencer runs
  * at each block's end (events_block). 0: JIANT's own front end (the host tests of JIANT's) */
 #ifndef XN_WB
 #define XN_WB 0
@@ -1147,7 +1147,7 @@ static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
     uint32_t lay, fx;
-    if (XN_WB) {                                  /* (XANOISE) the keys are Wonderblue's (xn_wb.c) */
+    if (XN_WB) {                                  /* (XENOISE) the keys are Wonderblue's (xn_wb.c) */
         kb_prev = cur;
         return;
     }
@@ -2453,7 +2453,7 @@ static void events_block(uint32_t n)
     if (song.playing)
         song.tick++;
 #if XN_WB
-    wb_isr(n);                                      /* (XANOISE) Wonderblue's sequencer (xn_wb.c) */
+    wb_isr(n);                                      /* (XENOISE) Wonderblue's sequencer (xn_wb.c) */
 #endif
 }
 

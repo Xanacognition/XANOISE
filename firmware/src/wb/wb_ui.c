@@ -12,7 +12,7 @@
  *   PLAY, REC, HOME + PLAY: SIT      OCT- / OCT+  the pads' octave
  * The store: sixteen slots of 16 KiB from STORE_LO, slot 0 the autosave. */
 
-/* (XANOISE) the tabs in the panel's order: HOME, SAVE, SCL, then ENV (MIX) left of LFO (GEN) as on the FM-1, SEQ, EDIT,
+/* (XENOISE) the tabs in the panel's order: HOME, SAVE, SCL, then ENV (MIX) left of LFO (GEN) as on the FM-1, SEQ, EDIT,
  * GLO; renamed for what they hold (WND-1: TRK SNG CHD MIX GEN ARR SND MST) */
 enum { PG_TRK, PG_SNG, PG_CHD, PG_MIX, PG_GEN, PG_ARR, PG_SND, PG_MST, PG_N };
 static const char *const PG_NAME[PG_N] = {"HOM", "SAV", "CHD", "MIX", "GEN", "SEQ", "EDT", "MST"};
@@ -36,7 +36,7 @@ static const char *const SECT_NAME[NPAT] = {"MAIN", "VARY", "DOWN", "BUILD", "GR
 #define C_BLUE RGB(52, 116, 232)
 #define C_CYAN RGB(52, 214, 204)
 #define C_REDC RGB(232, 82, 66)
-/* (XANOISE) the drums one orange (BRK KIK PER), the bass green, the keys and the synth one blue */
+/* (XENOISE) the drums one orange (BRK KIK PER), the bass green, the keys and the synth one blue */
 static const uint16_t TRK_COL[NT] = {RGB(238, 142, 42), RGB(238, 142, 42), RGB(238, 142, 42), RGB(52, 214, 204),
                                      RGB(84, 146, 244), RGB(84, 146, 244)};
 static const uint16_t KNOB_C[4] = {RGB(240, 92, 80), RGB(244, 196, 64), RGB(96, 214, 120), RGB(84, 152, 244)};
@@ -72,8 +72,8 @@ static uint8_t fx_latch, arp_latch, perf_solo, seq_used;
 static uint32_t page_ms;                        /* when the page opened (its F keys blink a moment) */
 static uint32_t fx_rel_ms, arp_rel_ms, seq_down_ms;
 #define LATCH_MS 400u
-#define ARM_MS 8000u                            /* (XANOISE: a question waits 8 s, was 3) */
-static int fx_on(void) { return fx_latch; }       /* (XANOISE: FX and ARP a tap on, a tap off; WND-1: held, or latched) */
+#define ARM_MS 8000u                            /* (XENOISE: a question waits 8 s, was 3) */
+static int fx_on(void) { return fx_latch; }       /* (XENOISE: FX and ARP a tap on, a tap off; WND-1: held, or latched) */
 static int arp_on(void) { return arp_latch; }
 
 static void toast(const char *s)
@@ -89,7 +89,7 @@ static uint32_t plen(void) { uint32_t l = P()->len; return l && l <= NROW ? l : 
 static uint32_t trk(void) { return sel_trk % NT; }
 static int quiet(void)
 {
-    return !xj_busy();                          /* (XANOISE: JIANT's voices) */
+    return !xj_busy();                          /* (XENOISE: JIANT's voices) */
 }
 static void audition(uint32_t t, uint32_t n)    /* a short note on a track (the knobs, HEAR) */
 {
@@ -112,7 +112,7 @@ static void drm_name(uint32_t n, char *o)       /* "SNR +2", "HHO -1" */
 typedef char song_fits_a_slot[sizeof(song_t) <= SLOT_SIZE ? 1 : -1];
 static char slot_name[NSLOT][16];
 static uint8_t slot_ok[NSLOT];
-#if defined(DINGHY_HOST) || defined(KAWA_WASM) || defined(XN_WB_RAMSTORE)   /* (XANOISE: its emulator and tests) */
+#if defined(DINGHY_HOST) || defined(KAWA_WASM) || defined(XN_WB_RAMSTORE)   /* (XENOISE: its emulator and tests) */
 static uint8_t host_flash[NSLOT][SLOT_SIZE];
 static uint32_t store_gen;
 static int store_read(uint32_t k, uint32_t off, void *p, uint32_t n) { memcpy(p, host_flash[k] + off, n); return 0; }
@@ -121,7 +121,7 @@ static int store_erase(uint32_t k) { memset(host_flash[k], 0xFF, SLOT_SIZE); sto
 #else
 static uint32_t slot_at(uint32_t k) { return STORE_LO + k * SLOT_SIZE; }
 static int store_read(uint32_t k, uint32_t off, void *p, uint32_t n) { return st_read(slot_at(k) + off, p, n); }
-static int store_erase(uint32_t k)             /* (XANOISE: JIANT's st_erase / st_prog, storage_hw.c; the emulator's NOR) */
+static int store_erase(uint32_t k)             /* (XENOISE: JIANT's st_erase / st_prog, storage_hw.c; the emulator's NOR) */
 {
     uint32_t s;
     int rc;
@@ -929,7 +929,7 @@ static void page_go(uint32_t pg)
     sub = 0;
     arm_f = 0xFF;
 }
-static void save_ask(void)                      /* (XANOISE) the SAVE button on SAV: the song to the slot picked, asked first */
+static void save_ask(void)                      /* (XENOISE) the SAVE button on SAV: the song to the slot picked, asked first */
 {
     char buf[32], *e;
     if (sq_play) { toast("STOP FIRST TO SAVE"); return; }
@@ -949,8 +949,8 @@ static void ui_input(void)
     /* the pages (SEQ: a tap opens ARR, again goes back; held, it picks patterns) */
     for (i = 0; i < PG_N; i++)
         if (i != PG_ARR && (b & (1u << PG_BTN[i]))) {
-            if (fx_latch) { fx_latch = 0; punches_off(); }   /* (XANOISE: a page closes PERFORM) */
-            if (page == i && i == PG_SNG) save_ask();     /* (XANOISE) SAVE on SAV: save the song (OCT+ yes, OCT- no) */
+            if (fx_latch) { fx_latch = 0; punches_off(); }   /* (XENOISE: a page closes PERFORM) */
+            if (page == i && i == PG_SNG) save_ask();     /* (XENOISE) SAVE on SAV: save the song (OCT+ yes, OCT- no) */
             else if (page == i && (i == PG_SND || i == PG_MST)) sub = (uint8_t)((sub + 1u) % (i == PG_SND ? snd_npages(t) : 3u));
             else if (page != i) page_go(i);
         }
@@ -959,7 +959,7 @@ static void ui_input(void)
         if (page == PG_ARR) page_go(prev_page);
         else { page_go(PG_ARR); arr_pos = (uint8_t)(sq_play && !song.loop ? sq_chainpos : 0u); }
     }
-    /* (XANOISE) FX and ARP: a tap opens, a tap closes (the page under them stays as it was) */
+    /* (XENOISE) FX and ARP: a tap opens, a tap closes (the page under them stays as it was) */
     if (b & (1u << BTN_FX)) {
         if (fx_latch) { fx_latch = 0; punches_off(); toast("PERFORM CLOSED"); }
         else { fx_latch = 1; toast("PERFORM - FX CLOSES"); }
@@ -1104,7 +1104,7 @@ static void leds_flush(void)
         }
         fm1_led[p] = on;
         fm1_led_dim[p] = dim;
-        fm1_led_breath[p] = fm1_led_hi[p] = fm1_led_mid[p] = 0;   /* (XANOISE: JIANT's LED kinds, unused here) */
+        fm1_led_breath[p] = fm1_led_hi[p] = fm1_led_mid[p] = 0;   /* (XENOISE: JIANT's LED kinds, unused here) */
     }
 }
 #endif
@@ -1331,7 +1331,7 @@ static void draw_top(void)
     str_cat(s, song.name);
     s[arp_on() ? 10 : 13] = 0;
     g_text(39, 4, s, C_TXT, T_CROP);
-    if (arp_on()) {                             /* (XANOISE) ARP on: AR in green, as FX shows FX */
+    if (arp_on()) {                             /* (XENOISE) ARP on: AR in green, as FX shows FX */
         inset(122, 3, 21, 14);
         g_text_c(133, 4, "AR", RGB(96, 214, 120), T_CROP | T_BOLD);
     }
@@ -1356,7 +1356,7 @@ static void draw_heads(void)                     /* solid colours: the track pic
     g_rect(0, HEAD_Y, 240, GRID_Y - HEAD_Y, C_BG);
     for (t = 0; t < NT; t++) {
         int32_t x = lane_x(t), w = lane_w(t);
-        int fl = 0, off = song.trk[t].mute;            /* (XANOISE: no flash on a hit, for now) */
+        int fl = 0, off = song.trk[t].mute;            /* (XENOISE: no flash on a hit, for now) */
         uint16_t c = off ? C_INSET : t == sel ? TRK_COL[t] : g_mix(C_BG, TRK_COL[t], 110), ink;
         if (fl && !off) c = g_mix(TRK_COL[t], RGB(255, 255, 255), 150);
         ink = off ? C_MUTED : (t == sel || fl) ? C_BG : g_mix(TRK_COL[t], RGB(255, 255, 255), 170);   /* dark on bright, light on dim */
@@ -1392,7 +1392,7 @@ static void draw_grid(void)
             cell_text(s, c, t);
             if (t == sel) {
                 char a[4] = {s[0], s[1], s[2], 0};
-                uint16_t tc = play ? C_BG : skip ? C_FAINT : TRK_COL[t];   /* (XANOISE: the track's colour) */
+                uint16_t tc = play ? C_BG : skip ? C_FAINT : TRK_COL[t];   /* (XENOISE: the track's colour) */
                 g_text(x + 3, y + 1, a, c->n == NOTE_OFF ? C_MUTED : tc, T_CROP | (play ? T_BOLD : 0));
                 if (c->n != NOTE_OFF) {
                     char v[2] = {s[4], 0};

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Xanacognition (XANOISE)
-"""XANOISE: the names WND-1's files (firmware/src/wb/) define that JIANT's also do, both being one compilation unit
+# Copyright (C) 2026 Xanacognition (XENOISE)
+"""XENOISE: the names WND-1's files (firmware/src/wb/) define that JIANT's also do, both being one compilation unit
 each. Out: firmware/src/wb/wb_names.h, included by xn_wb.c around wb/: each clashing identifier renamed wb_ while
 WND-1's code is compiled (WB_NAMES_ON), and back (WB_NAMES_OFF); each clashing macro pushed, undefined and popped.
 Run after changing either side:  tools/wb_names.py"""

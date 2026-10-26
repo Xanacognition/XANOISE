@@ -19,7 +19,7 @@ enum { DM_HOUSE, DM_DEEP, DM_MICRO, DM_TECHHOUSE, DM_TECHNO, DM_DETROIT, DM_DUBT
        DM_EBM, DM_ITALO, DM_SYNTHPOP, DM_DARKWAVE, DM_POSTPUNK, DM_TRIBAL, DM_RBOX, DM_KLING, DM_MOTORIK, DM_INDIE,
        DM_SHOEGAZE, DM_FUNK, DM_DISCO, DM_BOOMBAP, DM_TRAP, DM_UKG, DM_DUBSTEP, DM_BREAKS, DM_DNB, DM_ONEDROP,
        DM_STEPPERS, DM_ROCKERS, DM_JAZZ, DM_BOSSA, DM_AFRO, DM_SPARSE, DM_IDM, DM_JOYDIV, DM_NEWORDER,
-       DM_TRIPHOP, DM_AMBREAK, DM_LOFI, DM_JUNGLE, DM_TOWN, DM_BATTLE, DM_BOSS, DM_NONE };   /* (XANOISE: the last seven) */
+       DM_TRIPHOP, DM_AMBREAK, DM_LOFI, DM_JUNGLE, DM_TOWN, DM_BATTLE, DM_BOSS, DM_NONE };   /* (XENOISE: the last seven) */
 /* (0.9.7, flash) the maps and the pools below are the text tools/gen_drum_maps.py reads (not compiled): build/gen/
  * gen_drum_maps.h holds them packed, each lane once at 16 levels a nibble (GM_LANE), the tables as lane numbers
  * (DRUM_MAP_I, HAT_POOL_I ..: gen.c gm_level) */
@@ -67,7 +67,7 @@ static const char *const DRUM_MAP[][8] = {
      * snare and a clap, driven sixteenths, open hats off the beat, toms into the one) */
     [DM_JOYDIV]    = {"X..X..X.X..X..X.", "....X.......X...", "", "7777777777777777", "", "..........4...5.", "", ""},
     [DM_NEWORDER]  = {"X...X...X...X...", "....X.......X...", "....5.......5...", "7676767676767676", "..6...6...6...6.", "..............44", "", ""},
-    /* (XANOISE) Wonderblue's: trip hop's lazy kick under a hard backbeat; ambient breakbeat's lifted break; lo-fi's
+    /* (XENOISE) Wonderblue's: trip hop's lazy kick under a hard backbeat; ambient breakbeat's lifted break; lo-fi's
      * dusty one-bar loop; jungle's chopped break at 160+; and the RPG's: the town's gentle two, the battle's drive,
      * the boss's double kick and tom runs */
     [DM_TRIPHOP]   = {"X......7..8.....", "....X.......X...", "", "7.4.7.4.7.4.7.4.", "..............4.", "", "...2.....2....2.", ""},
@@ -595,7 +595,7 @@ static const ggenre_t GENRE[] = {
      {BA_AROUND, BA_DUST, BA_JUNGLE}, 33, KM_INTERLOCK, 55, {PR_I_IV, PR_JAZZ, PR_MINOR4}, 2, CS_COMP, VM_QUART,
      {AP_WALK, AP_BROKEN}, LD_MOTIF, AMT(80, 85, 60, 30, 45), {KIT_SOFT, SR_FMBASS, SR_EP, SR_KEYS, SR_VOXLEAD}, SR_TEXTURE,
      4, 4, 65, 0, FM_PARTS, 50, HF_JAZZY},
-    /* ---- (XANOISE) Wonderblue's: after JIANT's, so every genre number before them names what it did */
+    /* ---- (XENOISE) Wonderblue's: after JIANT's, so every genre number before them names what it did */
     {"TRIP HOP", 76, 92, 12, {SC_MIN, SC_DOR, SC_HARM, SC_MIN}, DM_TRIPHOP, 100, KIT_SOFT, 2, HC_FUNK, FL_NONE, 3,
      {BA_DUB, BA_BOOMBAP, BA_PEDAL}, 29, KM_SUSTAIN, 90, {PR_MINOR4, PR_I_VI, PR_ANDAL}, 2, CS_SWELL, VM_RICH,
      {AP_GLASS, AP_BROKEN}, LD_SPARSE, AMT(90, 85, 75, 25, 35), {KIT_SOFT, SR_SUB, SR_STRINGS, SR_EP, SR_VOXLEAD}, SR_TEXTURE,

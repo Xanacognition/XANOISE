@@ -189,9 +189,9 @@ EOF
     run "USB descriptors: CDC $t_cdc (presented $t_on), UAC $t_uac (48 kHz $t_48), layout $t_lay" "$OUT/usb_desc_test"
 done
 
-# (XANOISE) Wonderblue-OS over JIANT (firmware/src/xn_wb.c), the device as the browser runs it: boot, PLAY, STOP
+# (XENOISE) Wonderblue-OS over JIANT (firmware/src/xn_wb.c), the device as the browser runs it: boot, PLAY, STOP
 $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/wb_test" tests/wb_test.c -lm
-run "XANOISE: WND-1's front end on JIANT's sound (boot, PLAY on every track, STOP)" "$OUT/wb_test"
+run "XENOISE: WND-1's front end on JIANT's sound (boot, PLAY on every track, STOP)" "$OUT/wb_test"
 
 [ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
 

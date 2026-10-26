@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Xanacognition (XANOISE)
- * XANOISE: Wonderblue-OS over JIANT (firmware/src/xn_wb.c), the whole device as the browser runs it (web/emu/felucca_web.c,
+ * Copyright (C) 2026 Xanacognition (XENOISE)
+ * XENOISE: Wonderblue-OS over JIANT (firmware/src/xn_wb.c), the whole device as the browser runs it (web/emu/felucca_web.c,
  * built for the host): it boots into WND-1's tracker, PLAY plays its song on JIANT's engines (every track sounds, the
  * mix stays under full scale), STOP lets the synths go, the pages open from their buttons, a song saved to a slot comes
  * back, the genres each write a song that plays. Writes build/host/wb_play.wav (the first song, 8 s).

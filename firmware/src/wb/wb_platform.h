@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Xanacognition (XANOISE) */
-/* XANOISE: what WND-1's files had from KAWA's platform (its platform.c, gfx.c) that JIANT has not as such: the panel's
+ * Copyright (C) 2026 Xanacognition (XENOISE) */
+/* XENOISE: what WND-1's files had from KAWA's platform (its platform.c, gfx.c) that JIANT has not as such: the panel's
  * names, the font type of its screen fonts, the poll its drawing calls between bands (JIANT's main loop does that). */
 enum { BTN_OCT_DOWN = 0, BTN_OCT_UP = 1, BTN_FX = 2, BTN_SEL = 3, BTN_ENV = 4, BTN_LFO = 5, BTN_EDIT = 6,
        BTN_GLO = 7, BTN_HOME = 8, BTN_SAVE = 9, BTN_ARP = 10, BTN_SEQ = 11, BTN_PLAY = 12, BTN_REC = 13 };

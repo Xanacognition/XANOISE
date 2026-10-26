@@ -13,7 +13,7 @@
 enum { T_BRK, T_KIK, T_DRM, T_BAS, T_KEY, T_SYN };
 enum { TY_BREAK, TY_KICK, TY_DRUMS, TY_SYNTH };
 static const uint8_t TRK_TYPE[NT] = {TY_BREAK, TY_KICK, TY_DRUMS, TY_SYNTH, TY_SYNTH, TY_SYNTH};
-static const char *const TRK_ID[NT] = {"BRK", "KIK", "PER", "BAS", "KEY", "SYN"};   /* (XANOISE: PER, was DRM) */
+static const char *const TRK_ID[NT] = {"BRK", "KIK", "PER", "BAS", "KEY", "SYN"};   /* (XENOISE: PER, was DRM) */
 static const char *const TRK_FULL[NT] = {"BREAK", "KICK", "PERCUSSION", "BASS", "KEYS", "SYNTH"};
 /* DRM: which drum a note plays, around its centre (the tune: the note minus the centre) */
 enum { DK_SNARE, DK_HAT, DK_OPEN, DK_CLAP };
@@ -63,7 +63,7 @@ typedef struct {
     uint32_t crc;
 } song_t;
 
-#ifndef POOL                                    /* (XANOISE: xn_wb.c sets it) */
+#ifndef POOL                                    /* (XENOISE: xn_wb.c sets it) */
 #define POOL __attribute__((section(".pool")))
 #endif
 static song_t song POOL;
