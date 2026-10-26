@@ -85,14 +85,22 @@ static uint8_t led_want[41];
 static uint8_t fx_latch, arp_latch, perf_solo, seq_used;
 static uint32_t page_ms;                        /* when the page opened (its F keys blink a moment) */
 static uint8_t vis_on;                          /* (XENOISE) HOM: the visualizer (xn_vis.c) in place of the tracker */
+static uint8_t vis_ar;                          /* (xn_vis.c: ALL RANGE, its start, where it looks) */
+static uint32_t vis_ar_ms;
+static uint16_t vis_yaw;
 static uint8_t pilot_col;                       /* (XENOISE) the PILOT SYSTEM: the knob ALGORITHM is on (SELECT turns it) on
                                                  * pages with no tracks (MST, SAV, GEN) */
 /* (XENOISE) SAV's actions: a knob's turn asks, OCT+ does it, OCT- does not (0..3: the F buttons' too) */
 enum { SA_SAVE, SA_NEW, SA_LOAD, SA_DELETE, SA_COPY, SA_PASTE, SA_INSERT, SA_OUTSERT };
 static uint8_t sng_clip = 0xFF;                 /* COPY's slot (PASTE and INSERT write it) */
 static uint8_t arm_oct;                         /* DELETE asked by OCT- (OCT- again: yes, OCT+: no); a knob's: OCT+ yes */
+static uint8_t fx_row, fx_col;                  /* (XENOISE) PERFORM's PILOT: the row (the punch-ins, the tracks), the column */
+static uint8_t vis_arp_held;                    /* (XENOISE) ARP down on the visualizer (held: ALL RANGE) */
 static uint8_t save_used;                       /* SAVE held: GEN (its release then does nothing) */
 static uint32_t save_down_ms;
+#define ARR_ASK 0x10u                           /* (XENOISE) arm_f: SEQ's K1..K4 asked */
+static void live_queue(uint32_t w);
+static uint32_t live_n(void);
 static uint8_t wb_resound;                      /* (XENOISE) tracks whose sound xs_sound loads again (LFO RESET) */
 static int env_knob(uint32_t t, uint32_t i, int32_t dd, char *lab, char *val);   /* (xn_pages.c) */
 static int lfo_knob(uint32_t t, uint32_t i, int32_t dd, char *lab, char *val);
@@ -103,7 +111,6 @@ static void fx_reset(void);
 static uint8_t lfo_pg;
 static uint8_t hom_edit, home_used;             /* (XENOISE) HOM: HOME again shows NOTE VEL FX AMT; HOME used with a key */
 static uint8_t arr_live, arr_clip = 0xFF;       /* (XENOISE) SEQ: live (SEQ again), the copied slot's pattern */
-static uint32_t arr_knob_ms[4];                 /* (a knob's action once a turn) */
 static void vis_open(void);
 static void vis_step(void);
 static uint8_t sng_taps, sng_fx;                /* (XENOISE) SAV: OCT+ taps counted; the store's last action (its animation) */
@@ -565,36 +572,47 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
             str_cat(val, NOTE_NM[song.key % 12u]);
         }
         return 1;
-    case PG_ARR: {                              /* (XENOISE) the slot picked (SELECT): K1 copy, K2 paste, K3 insert, K4 outsert;
-                                                 * a turn does it once */
+    case PG_ARR: {                              /* (XENOISE) the slot picked (PRESETS): K1 copy, K2 paste, K3 insert, K4 outsert;
+                                                 * a turn asks, OCT+ does it, OCT- does not (the PILOT's way, as SAV) */
         static const char *const L[4] = {"COPY", "PASTE", "INSERT", "OUTSRT"};
-        uint32_t n = song.nchain, at = arr_pos < n ? arr_pos : n ? n - 1u : 0u, k;
+        uint32_t n = song.nchain, at = arr_pos < n ? arr_pos : n ? n - 1u : 0u;
         char *q;
+        if (arr_live) {                         /* LIVE: K1 queues a pattern (as the white keys), K2 the loop */
+            if (i == 0u) {
+                uint32_t cur = sq_play && sq_cue < NPAT ? sq_cue : song.cur % NPAT;
+                str_cat(lab, "QUEUE");
+                if (dd) live_queue((uint32_t)clampi((int32_t)cur + (dd > 0 ? 1 : -1), 0, (int32_t)live_n() - 1));
+                q = str_cat(val, "P");
+                q[0] = (char)('1' + (sq_play && sq_cue < NPAT ? sq_cue : song.cur % NPAT));
+                q[1] = 0;
+                return 1;
+            }
+            if (i == 1u) {
+                str_cat(lab, "LOOP");
+                if (dd) { song.loop = dd > 0; touch(); }
+                str_cat(val, song.loop ? "PATTERN" : "SEQ");
+                return 1;
+            }
+            return 0;
+        }
         str_cat(lab, L[i]);
         if (i == 0u) { q = str_cat(val, "P"); q[0] = (char)('1' + song.chain[at] % NPAT); q[1] = 0; }
         else if (arr_clip == 0xFF) str_cat(val, "-");
         else { q = str_cat(val, "P"); q[0] = (char)('1' + arr_clip % NPAT); q[1] = 0; }
         if (i == 3u) { val[0] = 0; q = fmt_u(str_cat(val, "SLOT "), at + 1u, 0); (void)q; }
-        if (!dd || fm1_ms - arr_knob_ms[i] < 450u) { if (dd) arr_knob_ms[i] = fm1_ms; return 1; }
-        arr_knob_ms[i] = fm1_ms;
-        if (i == 0u) { arr_clip = song.chain[at]; toast("COPIED"); }
-        else if (arr_clip == 0xFF) { toast("COPY A SLOT FIRST (K1)"); return 1; }
-        else if (i == 1u) { song.chain[at] = arr_clip; toast("PASTED"); }
-        else if (i == 2u) {                     /* INSERT: the copy at the slot, the rest moved on */
-            if (n >= 16u) { toast("16 SLOTS AT MOST"); return 1; }
-            for (k = n; k > arr_pos && k > 0u; k--) song.chain[k] = song.chain[k - 1u];
-            song.chain[arr_pos < n ? arr_pos : n] = arr_clip;
-            song.nchain++;
-            toast("INSERTED");
-        } else {                                /* OUTSERT: the slot gone, the rest moved back */
-            if (n <= 1u) { toast("ONE SLOT LEFT"); return 1; }
-            for (k = at; k + 1u < n; k++) song.chain[k] = song.chain[k + 1u];
-            song.nchain--;
-            if (sq_chainpos >= song.nchain) sq_chainpos = 0;
-            if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
-            toast("SLOT OUT, THE REST BACK");
+        if (!dd) return 1;
+        if (i != 0u && arr_clip == 0xFF && i != 3u) { toast("COPY A SLOT FIRST (K1)"); return 1; }
+        if (i == 2u && n >= 16u) { toast("16 SLOTS AT MOST"); return 1; }
+        if (i == 3u && n <= 1u) { toast("ONE SLOT LEFT"); return 1; }
+        if (arm_f != ARR_ASK + i) {
+            char buf[32];
+            arm_f = (uint8_t)(ARR_ASK + i);
+            arm_ms = fm1_ms;
+            buf[0] = 0;
+            q = fmt_u(str_cat(str_cat(buf, (const char *const[]){"COPY ", "PASTE TO ", "INSERT AT ", "OUTSERT "}[i]), "SLOT "), at + 1u, 0);
+            str_cat(q, "? OCT+");
+            toast(buf);
         }
-        touch();
         return 1;
     }
     case PG_ARR + 100u:                         /* (WND-1's ARR knobs, kept for the PRESETS knob: the slot's pattern) */
@@ -1120,11 +1138,62 @@ static void mute_key(uint32_t t)                /* PERFORM: a black key mutes (o
     touch();
 }
 
+static void arr_do(uint32_t i)                  /* (XENOISE) SEQ's K1..K4, asked (OCT+) */
+{
+    uint32_t n = song.nchain, at = arr_pos < n ? arr_pos : n ? n - 1u : 0u, k;
+    arm_f = 0xFF;
+    if (i == 0u) { arr_clip = song.chain[at]; toast("COPIED"); return; }
+    if (arr_clip == 0xFF && i != 3u) return;
+    if (i == 1u) { song.chain[at] = arr_clip; toast("PASTED"); }
+    else if (i == 2u) {                         /* INSERT: the copy at the slot, the rest moved on */
+        if (n >= 16u) return;
+        for (k = n; k > arr_pos && k > 0u; k--) song.chain[k] = song.chain[k - 1u];
+        song.chain[arr_pos < n ? arr_pos : n] = arr_clip;
+        song.nchain++;
+        toast("INSERTED");
+    } else {                                    /* OUTSERT: the slot gone, the rest moved back */
+        if (n <= 1u) return;
+        for (k = at; k + 1u < n; k++) song.chain[k] = song.chain[k + 1u];
+        song.nchain--;
+        if (sq_chainpos >= song.nchain) sq_chainpos = 0;
+        if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
+        toast("SLOT OUT, THE REST BACK");
+    }
+    touch();
+}
+static void fx_pilot(int32_t d)                 /* (XENOISE) PERFORM, SELECT: the one ALGORITHM is on, right on, left off */
+{
+    if (fx_row == 0u) {
+        uint32_t w = fx_col % NPUNCH, m = 1u << KEY_OF_WHITE[w];
+        if (d > 0 && !(punch_keys & m)) { punch_keys |= m; punch(w, 1); toast(PUNCH_NAME[w]); }
+        else if (d < 0 && (punch_keys & m)) { punch_keys &= ~m; punch(w, 0); toast("OFF"); }
+    } else {
+        track_t *tr = &song.trk[fx_col % NT];
+        uint8_t *f = perf_solo ? &tr->solo : &tr->mute;
+        if ((d > 0) != (*f != 0)) mute_key(fx_col % NT);
+    }
+}
 static void fn_press_now(uint32_t i)            /* (XENOISE) an F button's action, no question first (SAV: OCT+ a tap) */
 {
     arm_f = (uint8_t)i;
     arm_ms = fm1_ms;
     fn_press(i);
+}
+static void live_queue(uint32_t w)              /* (XENOISE) LIVE: pattern w next, looped till another (a white key, K1, PRESETS) */
+{
+    char buf[24], *q;
+    w %= NPAT;
+    if (sq_play) sq_cue = (uint8_t)w;
+    else song.cur = (uint8_t)w;
+    song.loop = 1;
+    if (cur_row >= plen()) cur_row = 0;
+    buf[0] = 0;
+    q = str_cat(buf, sq_play ? "NEXT: P" : "P");
+    q[0] = (char)('1' + w);
+    q[1] = ' ';
+    q[2] = 0;
+    str_cat(q, SECT_NAME[w]);
+    toast(buf);
 }
 static uint32_t live_n(void)                    /* (XENOISE) SEQ LIVE: patterns 1..this (the highest the song plays or has notes in) */
 {
@@ -1204,6 +1273,8 @@ static void page_go(uint32_t pg)
     sub = 0;
     arm_f = 0xFF;
     vis_on = 0;
+    vis_ar = 0;
+    vis_yaw = 0;
     sng_taps = 0;
     hom_edit = 0;
     pilot_col = 0;
@@ -1249,6 +1320,13 @@ static void ui_input(void)
     if (b & (1u << BTN_FX)) {
         if (fx_latch) { fx_latch = 0; punches_off(); fx_reset(); toast("PERFORM CLOSED"); }
         else { fx_latch = 1; toast("PERFORM - FX CLOSES"); }
+    }
+    if (vis_on && page == PG_TRK && !fx_on()) {  /* (XENOISE) the visualizer: ARP held, ALL RANGE; HOME, home again */
+        if (b & (1u << BTN_ARP)) { arp_rel_ms = fm1_ms; vis_arp_held = 1; }
+        if (!(held & (1u << BTN_ARP))) vis_arp_held = 0;
+        if (vis_arp_held && !vis_ar && fm1_ms - arp_rel_ms >= 450u) { vis_arp_held = 0; vis_ar = 1; vis_ar_ms = fm1_ms; vis_yaw = 0; }
+        if ((b & (1u << BTN_HOME)) && vis_ar == 2u) { vis_ar = 3; vis_ar_ms = fm1_ms; home_used = 1; }
+        b &= ~(1u << BTN_ARP);
     }
     if (b & (1u << BTN_ARP)) {                  /* (XENOISE) ARP: its page (the track's arp on JIANT's), again its second */
         if (fx_latch) { fx_latch = 0; punches_off(); fx_reset(); }
@@ -1310,7 +1388,10 @@ static void ui_input(void)
         } else if (page == PG_ARR) {            /* (XENOISE) OCT+ adds a slot (a pattern the song does not play yet, or the
                                                  * one picked again), OCT- deletes the last */
             uint32_t n = song.nchain, q, k2;
-            if (up) {
+            if (arm_f >= ARR_ASK && arm_f < ARR_ASK + 4u) {   /* (a knob's question: OCT+ yes, OCT- no) */
+                if (up) arr_do(arm_f - ARR_ASK);
+                else { arm_f = 0xFF; toast("CANCELLED"); }
+            } else if (up) {
                 if (n >= 16u) toast("16 SLOTS AT MOST");
                 else {
                     for (q = 0; q < NPAT; q++) { for (k2 = 0; k2 < n && song.chain[k2] != q; k2++) {} if (k2 == n) break; }
@@ -1340,15 +1421,20 @@ static void ui_input(void)
      * knob on pages with no tracks), SELECT turns what PRESETS used to (the pattern; the knob ALGORITHM is on), K1..K4
      * the page's knobs, the page's button again its next page */
     if ((d = fm1_enc_take(ENC_PRESETS)) != 0) {
-        if (page == PG_GEN && sub < 2u) { char lab[16], val[24]; uint8_t s0 = sub; sub = 0; ngen_knob(0, d, lab, val); sub = s0; }
+        if (vis_on && vis_ar) { if (vis_ar == 2u) vis_yaw = (uint16_t)(vis_yaw - (uint32_t)(d < 0 ? -d : d) * 0x400u); }   /* (ALL RANGE: look left) */
+        else if (fx_on()) { fx_row = (uint8_t)clampi((int32_t)fx_row + d, 0, 1); fx_col = (uint8_t)clampi(fx_col, 0, fx_row ? NT - 1 : NPUNCH - 1); }   /* (PERFORM: the punch-ins, the tracks) */
+        else if (page == PG_GEN && sub < 2u) { char lab[16], val[24]; uint8_t s0 = sub; sub = 0; ngen_knob(0, d, lab, val); sub = s0; }
         else if (page == PG_SNG) slot_sel = (uint8_t)clampi((int32_t)slot_sel + d, 1, NSLOT - 1);
         else if (page == PG_CHD) chd_slot = (uint8_t)clampi((int32_t)chd_slot + d, 0, song.ndeg < 8u ? song.ndeg : 7);
+        else if (page == PG_ARR && arr_live) live_queue((uint32_t)clampi((int32_t)(sq_play && sq_cue < NPAT ? sq_cue : song.cur % NPAT) + d, 0, (int32_t)live_n() - 1));
         else if (page == PG_ARR) arr_pos = (uint8_t)clampi((int32_t)arr_pos + d, 0, song.nchain < 16u ? song.nchain : 15);
         else if (page == PG_MST) { sub = (uint8_t)(((int32_t)sub + d % (int32_t)MST_NSUB + (int32_t)MST_NSUB) % (int32_t)MST_NSUB); pilot_col = 0; }   /* (XENOISE) its group */
         else cur_row = (uint8_t)(((int32_t)cur_row + d % (int32_t)plen() + (int32_t)plen()) % (int32_t)plen());
     }
     if ((d = fm1_enc_take(ENC_ALGORITHM)) != 0) {   /* (XENOISE) the tracks, BRK .. SYN (no wrap); HOM: past SYN the visualizer */
-        if (page == PG_MST || page == PG_SNG || (page == PG_GEN && sub < 2u)) {   /* (XENOISE) the knob (SELECT turns it) */
+        if (vis_on && vis_ar && page == PG_TRK) { if (vis_ar == 2u) vis_yaw = (uint16_t)(vis_yaw + (uint32_t)(d < 0 ? -d : d) * 0x400u); }   /* (ALL RANGE: look right) */
+        else if (fx_on()) fx_col = (uint8_t)clampi((int32_t)fx_col + d, 0, fx_row ? NT - 1 : NPUNCH - 1);   /* (PERFORM: along the row) */
+        else if (page == PG_MST || page == PG_SNG || (page == PG_GEN && sub < 2u)) {   /* (XENOISE) the knob (SELECT turns it) */
             char lab[16], val[24];
             int32_t c = clampi((int32_t)pilot_col + d, 0, 3);
             while (c > 0 && c < 4 && !knob((uint32_t)c, 0, lab, val)) c += d > 0 ? 1 : -1;
@@ -1361,7 +1447,8 @@ static void ui_input(void)
     if ((d = fm1_enc_take(ENC_SELECT)) != 0) {
         char lab[16], val[24];
         uint32_t s0 = sub;
-        if (page == PG_SND) { sub = TRK_TYPE[t] == TY_DRUMS && sub >= 2u ? 2u : 0u; knob(0, d, lab, val); sub = (uint8_t)s0; }
+        if (fx_on()) fx_pilot(d);              /* (PERFORM: on, off) */
+        else if (page == PG_SND) { sub = TRK_TYPE[t] == TY_DRUMS && sub >= 2u ? 2u : 0u; knob(0, d, lab, val); sub = (uint8_t)s0; }
         else if (page == PG_SNG || (page == PG_GEN && sub < 2u)) knob(pilot_col, d, lab, val);
         else if (page == PG_CHD) knob(0u, d, lab, val);
         else if (page == PG_MST) knob(pilot_col, d, lab, val);   /* (XENOISE) the parameter ALGORITHM is on */
@@ -1451,19 +1538,7 @@ static void ui_input(void)
         }
         if (page == PG_CHD) { chord_pad((uint32_t)w); continue; }
         if (page == PG_ARR && arr_live) {        /* (XENOISE) LIVE: the pattern next, looped till another */
-            char buf[24], *q;
-            if ((uint32_t)w >= live_n()) continue;
-            if (sq_play) sq_cue = (uint8_t)w;
-            else song.cur = (uint8_t)w;
-            song.loop = 1;
-            if (cur_row >= plen()) cur_row = 0;
-            buf[0] = 0;
-            q = str_cat(buf, sq_play ? "NEXT: P" : "P");
-            q[0] = (char)('1' + w);
-            q[1] = ' ';
-            q[2] = 0;
-            str_cat(q, SECT_NAME[w]);
-            toast(buf);
+            if ((uint32_t)w < live_n()) live_queue((uint32_t)w);
             continue;
         }
         if (page == PG_ARR) { arr_launch((uint32_t)w); continue; }
@@ -1790,15 +1865,11 @@ static void draw_grid(void)
                     g_text(x + 32, y + 1, v, play ? C_BG : g_mix(C_BG, TRK_COL[t], 190), T_CROP);
                     if (c->fx) g_text(x + 51, y + 1, s + 6, play ? C_BG : TRK_COL[t], T_CROP);
                 }
-            } else {                            /* narrow: two characters (C4, F#, a slice, a drum and its velocity) */
-                static const char H[] = "0123456789ABCDEF";
-                if (c->n == NOTE_OFF) { s[0] = s[1] = '='; }
-                else if (TRK_TYPE[t] == TY_BREAK) { s[0] = (char)('0' + c->n / 10u); s[1] = (char)('0' + c->n % 10u); }
-                else if (TRK_TYPE[t] == TY_KICK) { s[0] = 'K'; s[1] = H[c->v & 15u]; }
-                else if (TRK_TYPE[t] == TY_DRUMS) { s[0] = "SHOC"[drm_kind(c->n)]; s[1] = H[c->v & 15u]; }
-                else { note_name(c->n, s); if (s[1] == '-') s[1] = s[2]; }
-                s[2] = 0;
-                g_text(x + 7, y + 1, s, c->n == NOTE_OFF ? C_MUTED : song.trk[t].mute && !play ? C_FAINT : play ? C_BG : TRK_COL[t], T_CROP);
+            } else {                            /* (XENOISE) narrow: Renoise's note-octave (C-4, F#2), the break's slice (S01),
+                                                 * the drum (KIK SNR HHC HHO CLP), === a note off */
+                cell_text(s, c, t);
+                s[3] = 0;
+                g_text(x + 3, y + 1, s, c->n == NOTE_OFF ? C_MUTED : song.trk[t].mute && !play ? C_FAINT : play ? C_BG : TRK_COL[t], T_CROP);
             }
         }
         if (cur && !play) g_frame(lane_x(sel), y, FOC_W - 2, ROW_H, C_BLUE);
@@ -1824,6 +1895,7 @@ static void draw_perform(void)                  /* FX: the FM-1's keyboard, each
             int32_t bx = clampi(cx - 13, 1, 239 - 27);   /* (the label stays on the screen) */
             g_rect(bx, ly, 27, 13, on ? C_ORANGE : C_PANEL);
             g_text_c(bx + 14, ly, SHORT[k], on ? C_BG : C_TXT, T_CROP);
+            if (fx_row == 0u && k == fx_col) { g_frame(bx - 1, ly - 1, 29, 15, C_TXT); g_frame(x + 1, KY, KW - 2, WH, C_TXT); }   /* (the PILOT's) */
         }
     }
     {                                           /* the black keys: the tracks (their colour, dark when muted), F1..F4 */
@@ -1848,6 +1920,7 @@ static void draw_perform(void)                  /* FX: the FM-1's keyboard, each
         g_rect(x, y, 36, 20, tr->solo ? C_BLUE : tr->mute ? C_INSET : C_PANEL);
         g_rect(x, y, 36, 3, tr->mute ? C_FAINT : fl ? C_TXT : TRK_COL[k]);
         g_text_c(x + 18, y + 5, TRK_ID[k], tr->mute ? C_FAINT : C_TXT, T_CROP);
+        if (fx_row == 1u && k == fx_col) g_frame(x - 1, y - 1, 38, 22, C_TXT);   /* (the PILOT's) */
     }
 }
 static void draw_arr(void)
@@ -2256,7 +2329,23 @@ static void draw_all(void)
     case PG_GEN: if (sub < 2u) draw_gen(); else draw_grid(); break;
     case PG_CHD: draw_chd(); break;
     case PG_SND: draw_snd(); break;
-    case PG_ARR: if (arr_live) draw_live(); else draw_arr(); break;
+    case PG_ARR:
+        if (arr_live) draw_live();
+        else draw_arr();
+        if (!arr_live && arm_f >= ARR_ASK && arm_f < ARR_ASK + 4u) {   /* (XENOISE) a knob's question */
+            static const char *const Q[4] = {"COPY SLOT", "PASTE TO SLOT", "INSERT AT SLOT", "OUTSERT SLOT"};
+            char q[24], *e;
+            int blink = (fm1_ms / 260u) & 1u;
+            q[0] = 0;
+            e = str_cat(q, Q[arm_f - ARR_ASK]);
+            *e++ = ' ';
+            fmt_u(e, (uint32_t)arr_pos + 1u, 0);
+            g_rect(24, TOP_H + 70, 192, 40, C_BG);
+            g_frame(24, TOP_H + 70, 192, 40, blink ? C_BLUE : g_mix(C_BG, C_BLUE, 120));
+            g_text_c(120, TOP_H + 75, q, C_BLUE, T_BOLD);
+            g_text_c(120, TOP_H + 93, "OCT+: YES   OCT-: NO", blink ? C_TXT : C_MUTED, T_CROP);
+        }
+        break;
     case PG_ENV: draw_env(); break;
     case PG_LFO: draw_lfo(); break;
     case PG_ARP: draw_arp(); break;
@@ -2310,6 +2399,7 @@ static void app_step(void)
         pattern_ended(pi);
     }
     if (sq_play && sq_pi != song.cur) { song.cur = sq_pi; if (cur_row >= plen()) cur_row = 0; }
+    prog_pi = (uint8_t)(song.cur % NPAT);       /* (XENOISE: the chords shown, the pattern's: an A or a B part's) */
     for (t = 0; t < NT; t++) if (trig_ms[t]) { trig_ms[t] = 0; flash_ms[t] = fm1_ms; }
     if (prog_due && fm1_ms - prog_ms > 900u) { prog_due = 0; if (prog_sel != song.prog || prog_sel == 0u) { prog_pick(prog_sel); touch(); } }
     if (aud_off_t != 0xFF && (int32_t)(fm1_ms - aud_off_ms) >= 0) { ev_push(EV_OFF, aud_off_t, 0, 0); aud_off_t = 0xFF; }

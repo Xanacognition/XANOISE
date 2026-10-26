@@ -337,12 +337,14 @@ static void mutate_track(uint32_t pi, uint32_t t, uint32_t a)   /* a: 0..100 */
 enum { S_INTRO, S_VERSE, S_CHORUS, S_VERSE2, S_BRIDGE, S_BUILD, S_DROP, S_OUTRO };
 #define WB_NFORM 4u
 static const char *const FORM_NAME[WB_NFORM] = {"SONG", "CLUB", "JAM", "EPIC"};
-static const uint8_t FORM_LEN[WB_NFORM] = {10, 8, 6, 12};
+static const uint8_t FORM_LEN[WB_NFORM] = {16, 12, 12, 15};   /* (XENOISE: verses, choruses and breakdowns twice) */
 static const uint8_t FORM[WB_NFORM][16] = {
-    {S_INTRO, S_VERSE, S_CHORUS, S_VERSE2, S_CHORUS, S_BRIDGE, S_BUILD, S_DROP, S_CHORUS, S_OUTRO},
-    {S_INTRO, S_BUILD, S_DROP, S_VERSE, S_BRIDGE, S_BUILD, S_DROP, S_OUTRO},
-    {S_VERSE, S_CHORUS, S_VERSE2, S_CHORUS, S_BRIDGE, S_CHORUS},
-    {S_INTRO, S_VERSE, S_VERSE2, S_CHORUS, S_BRIDGE, S_VERSE, S_CHORUS, S_BUILD, S_DROP, S_DROP, S_CHORUS, S_OUTRO},
+    {S_INTRO, S_VERSE, S_VERSE, S_CHORUS, S_CHORUS, S_VERSE2, S_VERSE2, S_CHORUS, S_CHORUS, S_BRIDGE, S_BRIDGE, S_BUILD, S_DROP,
+     S_CHORUS, S_CHORUS, S_OUTRO},
+    {S_INTRO, S_BUILD, S_DROP, S_DROP, S_VERSE, S_VERSE, S_BRIDGE, S_BRIDGE, S_BUILD, S_DROP, S_DROP, S_OUTRO},
+    {S_VERSE, S_VERSE, S_CHORUS, S_CHORUS, S_VERSE2, S_VERSE2, S_CHORUS, S_CHORUS, S_BRIDGE, S_BRIDGE, S_CHORUS, S_CHORUS},
+    {S_INTRO, S_VERSE, S_VERSE, S_VERSE2, S_VERSE2, S_CHORUS, S_CHORUS, S_BRIDGE, S_BRIDGE, S_BUILD, S_DROP, S_DROP, S_CHORUS,
+     S_CHORUS, S_OUTRO},
 };
 static void form_set(uint32_t f)
 {
@@ -363,20 +365,19 @@ static int form_of(void)                        /* the form the chain is (-1: th
 }
 static void form_shuffle(void)
 {
-    uint8_t c[24];
+    uint8_t c[32];
     uint32_t n, k, tries, cycles, drop_at, bridge_at, i;
-    for (tries = 0; tries < 8u; tries++) {
+    for (tries = 0; tries < 40u; tries++) {
         n = 0;
         cycles = 2u + rnd(2);
         drop_at = rnd(cycles);
         bridge_at = rnd(cycles);
         if (rnd(4)) c[n++] = S_INTRO;
         for (k = 0; k < cycles; k++) {
-            if (k == 0u || rnd(3)) c[n++] = (uint8_t)(rnd(2) ? S_VERSE : S_VERSE2);
-            if (!rnd(4)) { uint8_t pv = c[n - 1u]; c[n++] = (uint8_t)(pv == S_VERSE ? S_VERSE2 : S_VERSE); }
+            if (k == 0u || rnd(3)) { c[n] = c[n + 1u] = (uint8_t)(rnd(2) ? S_VERSE : S_VERSE2); n += 2u; }   /* (twice) */
             c[n++] = S_CHORUS;
-            if (k + 1u == cycles && rnd(2)) c[n++] = S_CHORUS;
-            if (k == bridge_at && k + 1u < cycles) c[n++] = S_BRIDGE;
+            c[n++] = S_CHORUS;
+            if (k == bridge_at && k + 1u < cycles) { c[n++] = S_BRIDGE; c[n++] = S_BRIDGE; }
             if (k == drop_at) {
                 c[n++] = S_BUILD;
                 c[n++] = S_DROP;
@@ -384,11 +385,12 @@ static void form_shuffle(void)
             }
         }
         if (rnd(4)) c[n++] = S_OUTRO;
-        if (n > 16u) { c[15] = c[n - 1u]; n = 16u; }   /* (the end kept: an outro stays the last) */
+        if (n > 16u) continue;                  /* (too long for the chain: another) */
         if (n != song.nchain) break;
         for (i = 0; i < n && c[i] == song.chain[i]; i++) {}
         if (i < n) break;                       /* (another than the one there) */
     }
+    if (n > 16u) { form_set(0); return; }
     for (i = 0; i < n; i++) song.chain[i] = c[i];
     song.nchain = (uint8_t)n;
 }
@@ -410,6 +412,7 @@ static void gen_pattern(uint32_t pi, uint32_t v)
     song_lanes(0, &k1, &s1, &h1);
     song_lanes(1, &k2, &s2, &h2);
     pat_blank(&song.pat[pi], prog_len());
+    prog_pi = (uint8_t)pi;                      /* (XENOISE: an A or a B part's chords) */
     for (t = 0; t < NT; t++) {
         uint32_t mode = song_mode(t, 0), dens = song.trk[t].density;
         int drum = t == T_KIK || t == T_DRM, brk_on = !(t == T_BRK && mode == WM_OFF);
@@ -608,6 +611,7 @@ static void song_new(uint32_t gi)
     }
     roll_new();
     song_name();
+    song.x.bpart = (uint8_t)(1u << S_CHORUS | 1u << S_BRIDGE | 1u << S_DROP);   /* (XENOISE) the B loop: chorus, breakdown, drop */
     for (i = 0; i < NPAT; i++) gen_pattern(i, sect_v(i));
     form_set(ng_form % WB_NFORM);              /* (XENOISE) SONG: intro, verse, chorus .. outro (GEN's FORM) */
     song.cur = 0;
@@ -621,6 +625,7 @@ static void song_empty(void)                    /* (XENOISE) a blank page on the
     uint32_t i, t;
     song_new(song.genre % WB_NGENRE);
     for (i = 0; i < NPAT; i++) pat_blank(&song.pat[i], 16);
+    song.x.bpart = 0;                           /* (one loop: the user's to make) */
     for (t = 0; t < NT; t++) { track_defaults(t); song.trk[t].rev = REV[t]; song.trk[t].dly = DLY[t]; song.trk[t].vol = VOL[t]; }
     sound_patch(T_KIK, 5);                      /* PUNCH */
     sound_patch(T_DRM, 3);                      /* CRACK */
@@ -684,7 +689,7 @@ static void prog_set(const int8_t *deg, uint32_t n, uint32_t rows, uint32_t scal
                 cell_t c = pt->c[t][r % L0];
                 if (t >= T_BAS && c.n && c.n != NOTE_OFF) {
                     int32_t d = deg_at_s(c.n, osc), chrom = (int32_t)c.n - deg_midi_s(d, osc);
-                    c.n = (uint8_t)fold_oct(deg_midi_s(d - prog_deg_of(song.deg, song.ndeg, song.rows, r % L0) + prog_deg_of(deg, n, rows, r), nsc) + chrom);
+                    c.n = (uint8_t)fold_oct(deg_midi_s(d - prog_deg_b(song.deg, song.ndeg, song.rows, r % L0, p) + prog_deg_b(deg, n, rows, r, p), nsc) + chrom);
                 }
                 tmp[r] = c;
             }

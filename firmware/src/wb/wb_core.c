@@ -55,7 +55,7 @@ enum { RL_BRK, RL_BAS, RL_KEY, RL_SYN, RL_BRK2, RL_BAS2, RL_KEY2, RL_SYN2, RL_K,
  * engines (set 0: the sound's own, as its preset has it) */
 typedef struct { int8_t set, rate, wave, fade, pit, flt, shp, amp; } wb_lfo_t;
 typedef struct { uint8_t set, mode, rate, oct, gate, swing, prob, hold, order, pad[3]; } wb_arp_t;
-typedef struct { uint32_t magic; wb_lfo_t lfo[NT]; wb_arp_t arp[NT]; uint8_t spare[32]; } song_ext_t;
+typedef struct { uint32_t magic; wb_lfo_t lfo[NT]; wb_arp_t arp[NT]; uint8_t bpart, spare[31]; } song_ext_t;   /* bpart: the patterns on the B loop's chords */
 #define SONG_EXT_MAGIC 0x31545845u              /* "EXT1" */
 typedef struct {
     uint32_t magic, version;
@@ -113,7 +113,16 @@ static int32_t fold_oct(int32_t n)              /* into range by octaves: it sta
     return n;
 }
 static int32_t prog_deg_of(const int8_t *deg, uint32_t n, uint32_t rows, uint32_t r) { return deg[(r / (rows ? rows : 16u)) % (n ? n : 1u)]; }
-static int32_t prog_deg(uint32_t r) { return prog_deg_of(song.deg, song.ndeg, song.rows, r); }
+/* (XENOISE) the A and B loops: a B part's pattern plays the progression from its middle (I V vi IV: vi IV I V; a lone
+ * chord: its IV), the same key, another place in it. prog_pi: the pattern the chords are asked for */
+static uint8_t prog_pi;
+static int32_t prog_deg_b(const int8_t *deg, uint32_t n, uint32_t rows, uint32_t r, uint32_t pi)
+{
+    if (!((song.x.bpart >> (pi & 7u)) & 1u)) return prog_deg_of(deg, n, rows, r);
+    if (n <= 1u) return deg[0] + 3;
+    return prog_deg_of(deg, n, rows, r + n / 2u * (rows ? rows : 16u));
+}
+static int32_t prog_deg(uint32_t r) { return prog_deg_b(song.deg, song.ndeg, song.rows, r, prog_pi); }
 static uint32_t chord_notes(int32_t m, uint32_t chord, int32_t *out)   /* stacked thirds of the scale over m */
 {
     uint32_t k, n = WB_CHORD_N[chord % WB_NCHORD];

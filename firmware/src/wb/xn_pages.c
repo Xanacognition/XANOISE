@@ -194,13 +194,13 @@ static void draw_lfo(void)
     if (period < 40u) period = 40u;
     g_rect(8, mid, 224, 1, g_mix(C_BG, C_TXT, 40));
     for (x = 1; x < 224; x++) {                 /* two cycles of its wave */
-        int32_t a = lfo_wave_at((uint32_t)v[1], (uint32_t)(x - 1) * 65536u / 112u) * amp / 256;
-        int32_t b = lfo_wave_at((uint32_t)v[1], (uint32_t)x * 65536u / 112u) * amp / 256;
+        int32_t a = clampi(lfo_wave_at((uint32_t)v[1], (uint32_t)(x - 1) * 65536u / 112u & 0xFFFFu) * amp / 256, -amp, amp);   /* (a cycle's 16 bits) */
+        int32_t b = clampi(lfo_wave_at((uint32_t)v[1], (uint32_t)x * 65536u / 112u & 0xFFFFu) * amp / 256, -amp, amp);
         g_line(8 + x - 1, mid - a, 8 + x, mid - b, col);
     }
     {                                           /* where it is now (its rate, roughly) */
         uint32_t ph = fm1_ms % (period * 2u) * 65536u / period;   /* (two cycles: 0 .. 2^17) */
-        int32_t px = 8 + (int32_t)((ph & 0x1FFFFu) * 224u / 131072u), py = mid - lfo_wave_at((uint32_t)v[1], ph & 0xFFFFu) * amp / 256;
+        int32_t px = 8 + (int32_t)((ph & 0x1FFFFu) * 224u / 131072u), py = mid - clampi(lfo_wave_at((uint32_t)v[1], ph & 0xFFFFu) * amp / 256, -amp, amp);
         g_rect(px - 2, py - 2, 5, 5, C_ORANGE);
     }
     for (k = 0; k < 4u; k++) {                  /* its depths, two by two: bipolar bars (AMP from nothing) */
