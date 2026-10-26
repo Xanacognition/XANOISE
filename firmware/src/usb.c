@@ -1733,7 +1733,8 @@ static __attribute__((noinline)) void uac_in_fill(uint32_t n)
 #endif
 #endif
 
-static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
+static __attribute__((noinline)) void usb_poll(void)   /* TIMER5 ISR, 2 kHz (XENOISE: noinline, kept out of the tick as it was:
+                                                         * inlined, the tick counted its loops, tests/target_budget.py) */
 {
     uint32_t iu, it, ir;
     if (!usb.up)
