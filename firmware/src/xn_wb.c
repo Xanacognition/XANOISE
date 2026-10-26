@@ -23,9 +23,65 @@
 #define XJ_SYN 4u
 #define XJ_CTR 5u
 static uint32_t xj_count[NTRK];                  /* notes sent a track (the tests) */
-static void xj_on(uint32_t jt, uint32_t note, uint32_t vel) { xj_count[jt % NTRK]++; trk_note_on(&trk[jt % NTRK], note, vel); }
-static void xj_off(uint32_t jt, uint32_t note) { trk_note_off(&trk[jt % NTRK], note); }
-static void xj_release(uint32_t jt) { trk_all_off(&trk[jt % NTRK]); }
+static uint8_t xj_arp_on[NTRK];                  /* (XENOISE) the ARP page's arp on a track: its notes go to JIANT's arp */
+static void xj_on(uint32_t jt, uint32_t note, uint32_t vel)
+{
+    track_t *t = &trk[jt % NTRK];
+    xj_count[jt % NTRK]++;
+    if (xj_arp_on[jt % NTRK]) arp_add(t, note);   /* (seq.c: arp_step plays them, every block) */
+    else trk_note_on(t, note, vel);
+}
+static void xj_off(uint32_t jt, uint32_t note)
+{
+    if (xj_arp_on[jt % NTRK]) arp_remove(&trk[jt % NTRK], note);
+    else trk_note_off(&trk[jt % NTRK], note);
+}
+static void xj_release(uint32_t jt)
+{
+    track_t *t = &trk[jt % NTRK];
+    if (!t->p[P_AHOLD]) { t->nheld = 0; t->arp_phys = 0; }
+    trk_all_off(t);
+}
+/* (XENOISE) the LFO and ARP pages: JIANT's per-track LFO (RATE WAVE FADE, depths to PITCH FILTER SHAPE AMP) and arp */
+static void xj_lfo_read(uint32_t jt, int8_t *v)   /* rate wave fade pit flt shp amp */
+{
+    const int16_t *p = trk[jt % NTRK].p;
+    v[0] = (int8_t)clamp(p[P_LRATE], -12, 127); v[1] = (int8_t)p[P_LWAVE]; v[2] = (int8_t)clamp(p[P_LFADE], 0, 127);
+    v[3] = (int8_t)p[P_LD_PIT]; v[4] = (int8_t)p[P_LD_FLT]; v[5] = (int8_t)p[P_LD_SHP]; v[6] = (int8_t)clamp(p[P_LD_AMP], 0, 127);
+}
+static void xj_lfo_write(uint32_t jt, const int8_t *v)
+{
+    int16_t *p = trk[jt % NTRK].p;
+    p[P_LRATE] = v[0]; p[P_LWAVE] = (int16_t)clamp(v[1], 0, 4); p[P_LFADE] = v[2];
+    p[P_LD_PIT] = v[3]; p[P_LD_FLT] = v[4]; p[P_LD_SHP] = v[5]; p[P_LD_AMP] = v[6];
+}
+static void xj_arp_write(uint32_t jt, int on, const uint8_t *a)   /* mode rate oct gate swing prob hold order */
+{
+    track_t *t = &trk[jt % NTRK];
+    if (!on) {
+        if (xj_arp_on[jt % NTRK]) { t->nheld = 0; t->arp_phys = 0; t->p[P_AHOLD] = 0; }
+        xj_arp_on[jt % NTRK] = 0;
+        t->p[P_AMODE] = 0;
+        return;
+    }
+    xj_arp_on[jt % NTRK] = 1;
+    t->p[P_AMODE] = (int16_t)clamp(a[0], 0, 15); t->p[P_ARATE] = (int16_t)clamp(a[1], 0, 9); t->p[P_AOCT] = (int16_t)clamp(a[2], 1, 4);
+    t->p[P_AGATE] = (int16_t)clamp(a[3], 1, 127); t->p[P_ASWING] = (int16_t)clamp(a[4], 0, 100); t->p[P_APROB] = (int16_t)clamp(a[5], 0, 127);
+    t->p[P_AHOLD] = (int16_t)(a[6] != 0); t->p[P_AORDER] = (int16_t)(a[7] != 0);
+}
+static uint32_t xj_arp_view(uint32_t jt, uint8_t *held, uint32_t *idx)   /* the notes held, how far the arp is */
+{
+    const track_t *t = &trk[jt % NTRK];
+    uint32_t i, n = t->nheld < 16u ? t->nheld : 16u;
+    for (i = 0; i < n; i++) held[i] = t->held[i];
+    *idx = t->arp_idx;
+    return n;
+}
+static const char *xj_lfo_wave(uint32_t v) { return N_LWAVE[v % 5u]; }
+static const char *xj_lsync(int32_t v) { return N_LSYNC[(uint32_t)(-v - 1) % 12u]; }
+static const char *xj_amode(uint32_t v) { return N_AMODE[v % 16u]; }
+static const char *xj_div(uint32_t v) { return N_DIV[v % 10u]; }
+static int32_t xj_peak(uint32_t jt) { return trk[jt % NTRK].peak; }   /* the track's peak this block, Q15 */
 static int xj_busy(void)                         /* a voice sounding on any track (the autosave waits) */
 {
     uint32_t t, i;
@@ -326,6 +382,8 @@ static void xs_drums(void)
 static void xs_sound(void)
 {
     uint32_t t, h, drums = 0;
+    for (t = 0; t < NT; t++) if (wb_resound >> t & 1u) xs_sig[t] = 0;   /* (LFO RESET: the sound's own LFO again) */
+    wb_resound = 0;
     for (t = 0; t < NT; t++) {
         const track_t *s = &song.trk[t];
         h = xs_hash(s->p, sizeof s->p) ^ s->patch * 7919u ^ s->patch2 * 104729u;
@@ -344,7 +402,8 @@ static void xs_mix(void)
 {
     static uint32_t sig;
     uint32_t t, h = xs_hash(song.trk, sizeof song.trk) ^ xs_hash(xs_trim, sizeof xs_trim) ^ song.bpm ^ song.space << 8 ^ song.pump << 16 ^
-                    (uint32_t)song.mvol << 24 ^ song.age * 40009u ^ song.crush * 7001u ^ punch_lpf * 77u ^ punch_dub * 131u ^ punch_wash * 997u;
+                    (uint32_t)song.mvol << 24 ^ song.age * 40009u ^ song.crush * 7001u ^ (uint32_t)(uint8_t)fx_flt * 92821u ^
+                    fx_chop * 68917u ^ fx_step * 5003u ^ fx_wash * 3301u ^ punch_lpf * 77u ^ punch_dub * 131u ^ punch_wash * 997u;
     static const uint8_t JT[NT] = {XJ_BRK, XJ_DRM, XJ_DRM, XJ_BAS, XJ_KEY, XJ_SYN};
     if (h == sig) return;
     sig = h;
@@ -367,9 +426,47 @@ static void xs_mix(void)
     xj_global(G_DFDBK, punch_dub ? 105 : 60);
     xj_global(G_DUCK, song.pump);
     xj_global(G_DJF, punch_lpf ? -44 : 0);
+    if (fx_flt && !punch_lpf) xj_global(G_DJF, fx_flt);   /* (XENOISE) PERFORM's knobs: the DJ filter, */
+    xj_global(G_SLMODE, !fx_chop ? 0 : fx_chop <= 16u ? 1 : 2);   /* the chop (the slicer: GATE, STUT), its step, */
+    if (fx_chop) {
+        uint32_t k;
+        xj_global(G_SLPAT, (int32_t)((fx_chop - 1u) % 16u + 1u));
+        xj_global(G_SLRATE, fx_step);
+        xj_global(G_SLDEP, 127);
+        xj_global(G_SLFX, 1);
+        for (k = 0; k < 6u; k++) xj_global(G_SLT1 + k, 1);
+    }
+    if (fx_wash) {                              /* the wash: the room larger, the echoes longer */
+        int32_t rs = 40 + song.space * 87 / 100 + fx_wash * 60 / 100;
+        xj_global(G_RSIZE, rs > 127 ? 127 : rs);
+        xj_global(G_DFDBK, (punch_dub ? 105 : 60) + fx_wash * 40 / 100 > 118 ? 118 : (punch_dub ? 105 : 60) + fx_wash * 40 / 100);
+    }
     xn_mvol_q12 = 4096 * song.mvol * song.mvol / 10000;   /* (the master: xn_master) */
     xn_age = song.age;
     xn_crush = song.crush;
+}
+
+/* (XENOISE) the song's LFO and ARP (its extension: the LFO and ARP pages) on JIANT's tracks, every frame: what is set
+ * holds over the sound's own (a preset loaded with a new sound would bring its own back). KIK and PER share a JIANT
+ * track: PER's, else KIK's */
+static void xs_ext(void)
+{
+    static const uint8_t JT[NT] = {XJ_BRK, XJ_DRM, XJ_DRM, XJ_BAS, XJ_KEY, XJ_SYN};
+    uint32_t t;
+    for (t = 0; t < NT; t++) {
+        const wb_lfo_t *l = &song.x.lfo[t];
+        const wb_arp_t *r = &song.x.arp[t];
+        if (t == T_KIK) continue;               /* (KIK's: on PER's turn, the track they share) */
+        if (t == T_DRM) {
+            if (!l->set) l = &song.x.lfo[T_KIK];
+            if (!r->set) r = &song.x.arp[T_KIK];
+        }
+        if (l->set) { int8_t v[7] = {l->rate, l->wave, l->fade, l->pit, l->flt, l->shp, l->amp}; xj_lfo_write(JT[t], v); }
+        {
+            uint8_t a[8] = {r->mode, r->rate, r->oct, r->gate, r->swing, r->prob, r->hold, r->order};
+            xj_arp_write(JT[t], r->set && r->mode, a);
+        }
+    }
 }
 
 /* ---- the hooks: JIANT's boot, main loop and audio interrupt (main.c, seq.c) */
@@ -388,6 +485,7 @@ static void wb_frame(void)                       /* the main loop: WND-1's panel
     app_step();
     xs_sound();
     xs_mix();
+    xs_ext();
     xj_scope(sc, 120u);
     memcpy(scope, sc, sizeof sc);
     scope_w = 0;

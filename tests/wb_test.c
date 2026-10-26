@@ -57,7 +57,7 @@ int main(void)
     web_boot();
     run_ms(5000);                               /* (the splash first: its keys go nowhere) */
     check("boot: WND-1's tracker (TRK), the six tracks live on JIANT", page == PG_TRK && trk_live == NTRK);
-    check("the tabs: HOM SAV CHD MIX GEN SEQ EDT MST; the third track PER",
+    check("the tabs: HOM SAV CHD ENV LFO SEQ EDT MST; the third track PER",
           !strcmp(PG_NAME[0], "HOM") && !strcmp(PG_NAME[5], "SEQ") && !strcmp(PG_NAME[6], "EDT") && !strcmp(TRK_ID[2], "PER"));
     {   /* (XENOISE) every genre writes a song (a genre's table that loops the generator would hang the box) */
         uint32_t g;
@@ -109,19 +109,84 @@ int main(void)
         check("  left again: the tracker, SYN", !vis_on && sel_trk == NT - 1u);
         sel_trk = (uint8_t)s0;
     }
-    {   /* (XENOISE) MST the settings: GLO steps its pages; SYSTEM's theme kept in JIANT's settings */
+    {   /* (XENOISE) MST the settings: SELECT its group, ALGORITHM the parameter, PRESETS turns it; GLO again the mixer */
         tap(B_GLO);
         check("GLO: MST, its TEMPO page", page == PG_MST && sub == 0u);
-        tap(B_GLO); tap(B_GLO); tap(B_GLO);
-        check("  GLO x3 more: SYSTEM", page == PG_MST && sub == 3u);
+        web_enc(EN_SELECT, 3); run_ms(60);
+        check("  SELECT x3: SYSTEM", page == PG_MST && sub == 3u && mst_col == 0u);
         web_enc(EN_K1, 1); run_ms(60);
-        check("  K1: the theme CLASSIC, kept in the settings' byte", TH == &WB_THEMES[1] && (xn_prefs & 15u) == 1u);
-        web_enc(EN_K1, 12); run_ms(60);
+        check("  K1: the next theme (COMBAT), kept in the settings' byte", TH == &WB_THEMES[1] && (xn_prefs & 15u) == 1u);
+        web_enc(EN_K1, (int32_t)WB_NTHEME - 2); run_ms(60);
         check("  all the way: the last of the covers' themes", TH == &WB_THEMES[WB_NTHEME - 1u]);
-        web_enc(EN_K1, -20); run_ms(60);
-        check("  back: COMBAT (the default)", TH == &WB_THEMES[0] && (xn_prefs & 15u) == 0u);
+        web_enc(EN_K1, 1); run_ms(60);
+        check("  one more: round to CONCRETE", TH == &WB_THEMES[0]);
+        web_enc(EN_PRESET, 1); run_ms(60);
+        web_enc(EN_PRESET, -1); run_ms(60);
+        check("  PRESETS on THEME: on and back, CONCRETE (the default)", TH == &WB_THEMES[0] && (xn_prefs & 15u) == 0u);
+        web_enc(EN_SELECT, 1); run_ms(60);
+        check("  SELECT: round to TEMPO", sub == 0u);
+        {
+            uint32_t b0 = wb_song.bpm;
+            web_enc(EN_PRESET, 2); run_ms(60);
+            check("  PRESETS: the BPM (ALGORITHM on the first)", wb_song.bpm != b0);
+            web_enc(EN_PRESET, -2); run_ms(60);
+            web_enc(EN_ALGO, 1); run_ms(60);
+            check("  ALGORITHM: the next parameter", mst_col == 1u);
+            web_enc(EN_ALGO, -5); run_ms(60);
+            check("  (no further than the first)", mst_col == 0u);
+        }
         tap(B_GLO);
-        check("  GLO: round to TEMPO", sub == 0u);
+        check("  GLO again: the mixer", page == PG_MIX);
+        {
+            uint32_t v0 = wb_song.mvol;
+            web_enc(EN_PRESET, -4); run_ms(60);
+            check("  PRESETS: the master volume", wb_song.mvol + 4u == v0 || (v0 < 4u && wb_song.mvol == 0u));
+            web_enc(EN_PRESET, 4); run_ms(60);
+        }
+        tap(B_GLO);
+        check("  GLO again: the settings", page == PG_MST);
+        tap(B_HOME);
+    }
+    {   /* (XENOISE) ENV, LFO, ARP: the track's sound, its LFO, its arp (JIANT's) */
+        char lab[16], val[24];
+        uint32_t s0 = sel_trk;
+        sel_trk = T_BAS;
+        tap(B_ENV);
+        check("ENV: its page", page == PG_ENV);
+        run_ms(100);
+        tap(B_LFO);
+        check("LFO: its page", page == PG_LFO);
+        web_enc(EN_K3, 10); run_ms(60);
+        check("  K3: the pitch depth, the song's own LFO now", wb_song.x.lfo[T_BAS].set && wb_song.x.lfo[T_BAS].pit != 0);
+        run_ms(100);
+        tap(B_LFO);
+        check("  LFO again: GEN", page == PG_GEN);
+        tap(B_LFO);
+        check("  and again: LFO", page == PG_LFO);
+        tap(B_ARP);
+        check("ARP: its page", page == PG_ARP && sub == 0u);
+        lab[0] = val[0] = 0;
+        web_enc(EN_K1, 2); run_ms(60);
+        check("  K1: the mode, the arp on", wb_song.x.arp[T_BAS].set && wb_song.x.arp[T_BAS].mode == 3u);
+        run_ms(100);
+        check("  JIANT's bass arp on", xj_arp_on[XJ_BAS]);
+        tap(B_ARP);
+        check("  ARP again: its second page", page == PG_ARP && sub == 1u);
+        (void)lab; (void)val;
+        tap(B_ARP);
+        fn_press(3);
+        run_ms(100);
+        check("  F4: off (JIANT's too)", wb_song.x.arp[T_BAS].mode == 0u && !xj_arp_on[XJ_BAS]);
+        sel_trk = (uint8_t)s0;
+        tap(B_HOME);
+    }
+    {   /* (XENOISE) PERFORM's knobs: FILTER CHOP STEP WASH, gone when it closes */
+        tap(B_FX);
+        web_enc(EN_K1, 10); web_enc(EN_K2, 3); web_enc(EN_K4, 20); run_ms(100);
+        check("FX: K1 high-pass, K2 the chop, K4 the wash", fx_flt > 0 && fx_chop == 3u && fx_wash > 0u);
+        tap(B_FX);
+        check("  FX closed: all off", !fx_flt && !fx_chop && !fx_wash);
+        tap(B_HOME);
     }
     {   /* (XENOISE) HOM: the tracker alone; HOME again: the cell's knobs; again: alone */
         tap(B_HOME);
@@ -189,10 +254,6 @@ int main(void)
     check("FX: a tap opens PERFORM, it stays", wb_fx_on());
     tap(B_FX);
     check("  FX again: closed, the page as it was", !wb_fx_on() && page == PG_TRK);
-    tap(B_ARP);
-    check("ARP: a tap on, it stays; again: off", arp_on());
-    tap(B_ARP);
-    check("  (off)", !arp_on());
     tap(B_SAVE);
     check("SAVE: the SAV page", page == PG_SNG);
     {

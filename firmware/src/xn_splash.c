@@ -8,14 +8,16 @@
  *   1500 ..    the log gives way to the banner: COMBAT MODE ENGAGED on hazard stripes, blinking, then steady; a shine
  *              runs over the name
  * The screen in two halves of 240 x 120 (the canvas holds 150 rows): the scene drawn into each with cv_oy. Its own
- * colours (a cockpit's: cyan, magenta, amber on near black), whatever the palette */
+ * colours the theme's (xn_themes.h: its ground, its accents, its text), as the screen will be */
 
+#include "xn_themes.h"
 #define XS_END 2000u                                /* ms: the scene whole (main.c then holds it SPL_HOLD) */
-#define XS_BG 0x0021u                               /* #05070C */
-#define XS_CY 0x271Fu                               /* #20E0FF */
-#define XS_MAG 0xF94Du                              /* #FF2A6D */
-#define XS_AMB 0xFD80u                              /* #FFB000 */
-#define XS_WH 0xFFFFu
+static uint16_t xs_col[5];                          /* the theme's (xs_splash): its ground, what is picked, what plays, */
+#define XS_BG xs_col[0]                             /* its third accent, its text */
+#define XS_CY xs_col[1]
+#define XS_MAG xs_col[2]
+#define XS_AMB xs_col[3]
+#define XS_WH xs_col[4]
 
 static const char *const XS_LOG[] = {
     "> POWER CELL ........ OK", "> FM CORES x6 ....... OK", "> SEQUENCER ......... OK",
@@ -173,7 +175,9 @@ static void xs_scene(uint32_t t)
 /* the scene at ms, on the screen */
 static void xs_splash(uint32_t ms)
 {
+    const wb_theme_t *th = &WB_THEMES[xn_theme_index()];
     uint32_t h;
+    xs_col[0] = th->bg; xs_col[1] = th->sel; xs_col[2] = th->play; xs_col[3] = th->chord; xs_col[4] = th->txt;
     for (h = 0; h < 2u; h++) {
         cv_begin(240, 120, XS_BG);
         cv_oy = -(int32_t)h * 120;

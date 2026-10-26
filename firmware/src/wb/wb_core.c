@@ -50,6 +50,13 @@ typedef struct {
 #define SONG_MAGIC 0x45554C42u                  /* "BLUE" */
 #define SONG_VERSION 2u                         /* 2: six tracks */
 enum { RL_BRK, RL_BAS, RL_KEY, RL_SYN, RL_BRK2, RL_BAS2, RL_KEY2, RL_SYN2, RL_K, RL_S, RL_H, RL_K2, RL_S2, RL_H2, RL_N };
+/* (XENOISE) the song's extension, after its CRC (a song saved before it reads the same: its slots, its CRC; the
+ * extension is then its defaults, nothing set): per track the LFO and the ARP the LFO and ARP pages set on JIANT's
+ * engines (set 0: the sound's own, as its preset has it) */
+typedef struct { int8_t set, rate, wave, fade, pit, flt, shp, amp; } wb_lfo_t;
+typedef struct { uint8_t set, mode, rate, oct, gate, swing, prob, hold, order, pad[3]; } wb_arp_t;
+typedef struct { uint32_t magic; wb_lfo_t lfo[NT]; wb_arp_t arp[NT]; uint8_t spare[32]; } song_ext_t;
+#define SONG_EXT_MAGIC 0x31545845u              /* "EXT1" */
 typedef struct {
     uint32_t magic, version;
     char name[16];
@@ -61,6 +68,7 @@ typedef struct {
     track_t trk[NT];
     pat_t pat[NPAT];
     uint32_t crc;
+    song_ext_t x;                               /* (XENOISE: after the CRC, its own magic) */
 } song_t;
 
 #ifndef POOL                                    /* (XENOISE: xn_wb.c sets it) */

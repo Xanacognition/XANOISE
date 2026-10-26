@@ -86,8 +86,25 @@ static void gen_track(uint32_t pi, uint32_t t, uint32_t mode, uint32_t dens, con
     for (i = 0; i < NROW; i++) memset(&p->c[t][i], 0, sizeof(cell_t));
     if (mode == WK_OFF && TRK_TYPE[t] == TY_SYNTH) return;
     if (t == T_BRK && mode == WM_OFF) return;
-    d0 = (int32_t)rnd(3) * 2;                    /* the motif: one bar's melody, every bar on that bar's chord */
-    for (i = 0; i < 6u; i++) { md[i] = (int8_t)d0; ml[i] = (int8_t)(2 + rnd(3)); d0 = clampi(d0 + (int32_t)rnd(6) - 2, -3, 9); }
+    {   /* the motif: one bar's melody, every bar on that bar's chord. (XENOISE) A shape, not a random walk: it rises,
+         * arches, falls or waves from a chord tone; on the strong beats a chord tone (0 2 4: the root, third, fifth over
+         * the bar's chord), between them steps. The bars then say it as a phrase (below: call, answer, call, home) */
+        static const int8_t SHAPE[4][6] = {{0, 1, 2, 3, 4, 5}, {0, 1, 2, 3, 2, 1}, {4, 3, 2, 1, 0, -1}, {0, 2, 1, 3, 2, 4}};
+        static const int8_t TONES[6] = {-3, 0, 2, 4, 7, 9};
+        uint32_t sh = rnd(4);
+        d0 = (const int8_t[]){0, 2, 4}[rnd(3)];
+        if (sh == 2u) d0 = 2 + (int32_t)rnd(2) * 2;   /* (a falling one from higher up) */
+        for (i = 0; i < 6u; i++) {
+            int32_t v = d0 + SHAPE[sh][i] - SHAPE[sh][0];
+            if (rh[i] < 16u && rh[i] % 4u == 0u) {   /* a strong beat: the nearest chord tone */
+                uint32_t q, bq = 0;
+                for (q = 1; q < 6u; q++) if (clampi(v - TONES[q], -20, 20) * clampi(v - TONES[q], -20, 20) < clampi(v - TONES[bq], -20, 20) * clampi(v - TONES[bq], -20, 20)) bq = q;
+                v = TONES[bq];
+            }
+            md[i] = (int8_t)clampi(v, -3, 9);
+            ml[i] = (int8_t)(2 + rnd(3));
+        }
+    }
     for (b = 0; b < bars; b++) {
         uint32_t o = b * 16u, last = b + 1u == bars;
         cell_t *c = &p->c[t][o];
@@ -206,23 +223,37 @@ static void gen_track(uint32_t pi, uint32_t t, uint32_t mode, uint32_t dens, con
                 }
             } else {                            /* KEY / SYN: a melody */
                 r0 = deg_at((t == T_SYN ? 72 : 60) + song.key);
+                /* (XENOISE) the phrase: each bar a role in four. 0 the call (it ends, a breath after it), 1 the answer
+                 * (its second half a step lower, ending on the fifth, held: a question), 2 the call again, higher in its
+                 * middle (the climb), 3 home (ending on the root or its octave, held). Two bars: call, home; one: home */
+                uint32_t role = bars <= 1u ? 3u : bars == 2u ? (b ? 3u : 0u) : (b % 4u == 3u || last) ? 3u : b % 4u;
                 if (mode == WK_MOTIF) {
                     for (k = 0; k < 6u && rh[k] < 16u; k++) {
                         int32_t dd = md[k];
-                        if (last && (k == 5u || rh[k + 1u] >= 16u)) dd = (const int8_t[]){0, 4, 7}[rnd(3)];
-                        cell_set(&c[rh[k]], N(dd, rh[k]), k ? 9u + rnd(3) : 12u, 0, 0);
+                        int endk = k == 5u || rh[k + 1u] >= 16u, hold = endk && (role == 1u || role == 3u);
+                        if (role == 1u && rh[k] >= 8u) dd -= 1;
+                        if (role == 2u && rh[k] >= 4u && rh[k] < 12u) dd += 2;
+                        if (endk && role == 1u) dd = 4;
+                        if (endk && role == 3u) dd = rnd(3) ? 0 : 7;
+                        cell_set(&c[rh[k]], N(dd, rh[k]), k ? 9u + rnd(3) + (role == 2u ? 1u : 0u) : 12u, 0, 0);
+                        if (hold) continue;             /* (held: it rings into the next bar's first note) */
                         if ((uint32_t)(rh[k] + ml[k]) < 16u && !c[rh[k] + ml[k]].n) {
                             uint32_t j, free = 1;
                             for (j = k + 1u; j < 6u && rh[j] < 16u; j++) if (rh[j] == rh[k] + ml[k]) free = 0;
                             if (free) cell_set(&c[rh[k] + ml[k]], NOTE_OFF, 0, 0, 0);
                         }
                     }
-                } else if (mode == WK_LEAD) {
+                } else if (mode == WK_LEAD) {       /* (XENOISE) long notes saying the motif's shape, in the same roles */
                     static const uint8_t R[5][3] = {{0, 8, 99}, {0, 6, 12}, {4, 12, 99}, {0, 10, 99}, {2, 8, 14}};
-                    const uint8_t *r = R[rnd(5)];
-                    int32_t dd = (int32_t)rnd(3) * 2;
-                    for (k = 0; k < 3u && r[k] < 16u; k++) { if (k) dd = clampi(dd + (int32_t)rnd(5) - 2, -2, 9); cell_set(&c[r[k]], N(dd, r[k]), 9u + rnd(4), 0, 0); }
-                    if (rnd(2)) cell_set(&c[15], NOTE_OFF, 0, 0, 0);
+                    const uint8_t *r = R[(pi + t) % 5u];   /* (one rhythm a pattern: a line, not a scatter) */
+                    for (k = 0; k < 3u && r[k] < 16u; k++) {
+                        int endk = k == 2u || r[k + 1u] >= 16u;
+                        int32_t dd = md[k * 2u] + (role == 2u ? 2 : 0);
+                        if (endk && role == 1u) dd = 4;
+                        if (endk && role == 3u) dd = rnd(3) ? 0 : 7;
+                        cell_set(&c[r[k]], N(dd, r[k]), 9u + rnd(3) + (role == 2u ? 2u : 0u), 0, 0);
+                    }
+                    if (role == 0u) cell_set(&c[15], NOTE_OFF, 0, 0, 0);
                 } else {                        /* ARP */
                     for (i = 0; i < 16u; i += 2u) if (!i || rnd(100) < 70u + dens * 30u / 100u) cell_set(&c[i], N(ap[i / 2u], i), i % 4u ? 8u : 11u, 0, 0);
                 }
@@ -494,6 +525,7 @@ static void song_new(uint32_t gi)
     memset(&song, 0, sizeof song);
     song.magic = SONG_MAGIC;
     song.version = SONG_VERSION;
+    song.x.magic = SONG_EXT_MAGIC;              /* (XENOISE: the extension, nothing set) */
     song.genre = (uint8_t)(gi % WB_NGENRE);
     g = genre();
     pid = g->nprog ? g->prog[rnd(g->nprog)] : 0u;
