@@ -108,7 +108,7 @@ static void xs_scene(uint32_t t)
         uint32_t rot = t * 30u;
         xs_circle(cx, cy, R1, rot, 0x5000u, c1);   /* the outer ring in four arcs, turning */
         xs_circle(cx, cy, R1, rot + 0x8000u, 0x5000u, c1);
-        xs_circle(cx, cy, R2, 0x10000u - rot * 2u, 0x3000u, c2);
+        xs_circle(cx, cy, R2, 0u - rot * 2u, 0x3000u, c2);   /* (angles: 16 bits, round) */
         xs_circle(cx, cy, R2, 0x8000u - rot * 2u, 0x3000u, c2);
         for (k = 0; k < 12; k++) {                  /* the ticks */
             uint32_t th = (uint32_t)k * 65536u / 12u - rot / 2u;
