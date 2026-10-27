@@ -608,6 +608,12 @@ EXPORT uint32_t web_xn_song_size(void) { return xn_song_size(); }
 EXPORT uint32_t web_xn_song_took(void) { return xn_song_took(); }
 EXPORT uint8_t *web_xn_midi(void) { return wb_midi(); }
 EXPORT uint32_t web_xn_midi_size(void) { return wb_midi_size(); }
+static uint8_t web_theme_wire[THEME_WIRE];      /* (XENOISE) THEME LAB: a theme on the wire (wb_ui.c theme_wire_*) */
+EXPORT uint8_t *web_xn_theme_buf(void) { return web_theme_wire; }
+EXPORT uint32_t web_xn_theme_size(void) { return THEME_WIRE; }
+EXPORT uint32_t web_xn_theme_put(void) { return theme_wire_put(web_theme_wire); }   /* CUSTOM, picked */
+EXPORT uint32_t web_xn_theme_get(uint32_t k) { return theme_wire_get(k, web_theme_wire); }   /* 127: the one shown */
+EXPORT uint32_t web_xn_theme_count(void) { return XN_NTHEME; }
 EXPORT void web_lev_mode(uint32_t m) { lev_rec_mode = (uint8_t)m; lev_rec_at = 0; if (m == 1u) lev_rec_n = 0; }   /* (XENOISE: stems) */
 EXPORT int32_t *web_lev_rec(void) { return &lev_rec[0][0]; }
 EXPORT uint32_t web_lev_n(void) { return lev_rec_n; }

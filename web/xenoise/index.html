@@ -104,6 +104,7 @@ footer { border-top: 1px solid var(--seam); padding-block: 32px 0; display: grid
   <div class="go">
     <a class="btn" href="#install">Install</a>
     <a class="btn ghost" href="#export">Export</a>
+    <a class="btn ghost" href="theme.html" id="theme-link">Theme Lab</a>
     <a class="btn ghost" href="#flight">First flight</a>
     <a class="btn ghost" href="#sheet">Cheat sheet</a>
   </div>
@@ -330,7 +331,7 @@ const MSG = {
 const msg = (k, a = "") => (MSG[k] || k) + a;
 let image = null, product = "", writing = false, pending = null;
 const inArtifact = !!(window.claude && window.claude.use);
-if (inArtifact) { $("inst-here").hidden = true; $("inst-away").hidden = false; $("emu-link").href = "https://xanacognition.github.io/XANOISE/emu/"; }
+if (inArtifact) { $("inst-here").hidden = true; $("inst-away").hidden = false; $("emu-link").href = "https://xanacognition.github.io/XANOISE/emu/"; $("theme-link").href = "https://xanacognition.github.io/XANOISE/theme.html"; }
 
 function take(bytes, from) {
   const p = productOf(bytes);

@@ -175,7 +175,7 @@ static void xs_scene(uint32_t t)
 /* the scene at ms, on the screen */
 static void xs_splash(uint32_t ms)
 {
-    const wb_theme_t *th = &WB_THEMES[xn_theme_index()];
+    const wb_theme_t *th = xn_theme_ptr(xn_theme_index());
     uint32_t h;
     xs_col[0] = th->bg; xs_col[1] = th->sel; xs_col[2] = th->play; xs_col[3] = th->chord; xs_col[4] = th->txt;
     for (h = 0; h < 2u; h++) {

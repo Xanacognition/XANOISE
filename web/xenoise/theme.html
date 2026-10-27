@@ -1,0 +1,336 @@
+<title>XENOISE Theme Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: the device's screen large on the left, live (the firmware itself, in the page), the 34 colours of a theme
+   on the right in the groups the firmware draws with; the Dock's CONCRETE look */
+:root {
+  --ground: #161618; --slab: #1f1f22; --seam: #34343a; --text: #e8ecea; --dim: #9da2ab;
+  --play: #ff9a00; --chord: #ffcc46; --hot: #e84828; --ok: #7bd389;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --mono: "Share Tech Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html { background: var(--ground); }
+body { background: var(--ground); color: var(--text); font: 16px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 64px; display: grid; gap: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: var(--play); }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--chord); outline-offset: 2px; }
+h1, h2 { font-family: var(--display); font-weight: 700; margin: 0; letter-spacing: .04em; text-transform: uppercase; text-wrap: balance; }
+h1 { font-size: clamp(2rem, 6vw, 3.2rem); line-height: 1; }
+h1 span { color: var(--play); }
+h2 { font-size: 1rem; letter-spacing: .1em; }
+p { margin: 0; max-width: 65ch; }
+.label { font: 12px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.top { display: grid; gap: 8px; }
+.top .back { font: 13px var(--mono); }
+.lab { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 900px) { .lab { grid-template-columns: minmax(0, 1fr); } }
+.view { display: grid; gap: 12px; position: sticky; top: max(12px, env(safe-area-inset-top, 0px)); }
+@media (max-width: 900px) { .view { position: static; } }
+.screen { background: #000; border: 1px solid var(--seam); padding: 10px; display: grid; place-items: center; }
+canvas { width: 100%; max-width: 480px; aspect-ratio: 1; image-rendering: pixelated; display: block; }
+.pages { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn { font: 600 14px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 10px 14px;
+  border: 1px solid var(--play); color: var(--ground); background: var(--play); cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--play); }
+.btn.small { padding: 7px 10px; font-size: 12px; }
+.btn.on { background: var(--chord); border-color: var(--chord); color: var(--ground); }
+.btn:disabled { opacity: .35; cursor: default; }
+.status { font: 13px/1.5 var(--mono); color: var(--chord); min-height: 1.5em; overflow-wrap: anywhere; }
+.panel { background: var(--slab); border: 1px solid var(--seam); padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.field { display: grid; gap: 4px; }
+.field input[type=text], select { font: 15px var(--mono); background: var(--ground); color: var(--text); border: 1px solid var(--seam);
+  padding: 8px 10px; min-width: 0; }
+.field input[type=text] { width: 14ch; text-transform: uppercase; }
+.groups { display: grid; gap: 16px; }
+.group { display: grid; gap: 8px; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.sw { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px; align-items: center; background: var(--ground);
+  border: 1px solid var(--seam); padding: 4px 8px 4px 4px; }
+.sw input[type=color] { width: 34px; height: 28px; border: 0; padding: 0; background: none; cursor: pointer; }
+.sw span { font: 13px/1.2 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw code { display: block; font: 11px var(--mono); color: var(--dim); }
+.quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.checks { display: flex; flex-wrap: wrap; gap: 8px; font: 12px var(--mono); }
+.chip { border: 1px solid var(--seam); padding: 3px 8px; }
+.chip.good { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--seam)); }
+.chip.weak { color: var(--hot); border-color: color-mix(in srgb, var(--hot) 50%, var(--seam)); }
+.note { font-size: .9rem; color: var(--dim); }
+textarea { width: 100%; min-height: 90px; font: 12px var(--mono); background: var(--ground); color: var(--text); border: 1px solid var(--seam); box-sizing: border-box; }
+</style>
+
+<div class="wrap">
+<div class="top">
+  <a class="back" href="./">← Pilot's Dock</a>
+  <h1>Theme <span>Lab</span></h1>
+  <p>Make a colour theme for XENOISE. The screen on the left is the firmware itself, running in this page: every colour you change shows on the real pages. Send it to the FM-1 over USB and it appears as <b>CUSTOM</b> in MST › SYSTEM › THEME.</p>
+</div>
+
+<div class="lab">
+  <div class="view">
+    <div class="screen"><canvas id="scr" width="240" height="240" aria-label="The FM-1's screen with this theme"></canvas></div>
+    <div class="pages" id="pages"></div>
+    <div class="status" id="vstatus" role="status">Starting the firmware…</div>
+  </div>
+
+  <div class="groups">
+    <div class="panel">
+      <div class="row">
+        <label class="field"><span class="label">Start from</span><select id="from"></select></label>
+        <label class="field"><span class="label">Name (11 letters)</span><input type="text" id="name" maxlength="11" value="MY THEME"></label>
+      </div>
+      <div class="checks" id="checks"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Quick build</h2>
+      <p class="note">Pick three colours and let the lab mix the other 31 from them, the way the built-in cover themes were made. Then fine-tune below.</p>
+      <div class="quick">
+        <label class="sw"><input type="color" id="q-bg" value="#16161a"><span>Background</span></label>
+        <label class="sw"><input type="color" id="q-txt" value="#e8ecea"><span>Text</span></label>
+        <label class="sw"><input type="color" id="q-acc" value="#ff9a00"><span>Accent</span></label>
+      </div>
+      <div class="row"><button class="btn small" type="button" id="q-go">Build the palette</button></div>
+    </div>
+
+    <div id="fields" class="groups"></div>
+
+    <div class="panel">
+      <h2>Keep it</h2>
+      <div class="row">
+        <button class="btn" type="button" id="send">Send to FM-1</button>
+        <button class="btn ghost" type="button" id="read">Read from FM-1</button>
+        <button class="btn ghost" type="button" id="export">Export .json</button>
+        <label class="btn ghost" for="import">Import .json<input type="file" id="import" accept=".json,application/json" hidden></label>
+      </div>
+      <div class="status" id="mstatus" role="status"></div>
+      <p class="note" id="mnote">Sending needs Chrome or Edge on a computer, the FM-1 on a XENOISE build from November 2026 or newer, and no other MIDI program open. It's saved on the FM-1 when the sequence is stopped.</p>
+      <details><summary class="label">Theme as text</summary><textarea id="json" spellcheck="false" aria-label="This theme as JSON"></textarea></details>
+    </div>
+  </div>
+</div>
+</div>
+
+<script type="module">
+/*LIB*/
+const META = /*META*/;
+const $ = (id) => document.getElementById(id);
+const inArtifact = !!(window.claude && window.claude.use);
+
+/* xn_themes.h's 34 colours in the firmware's order, in the groups it draws with */
+const FIELDS = [
+  ["Surfaces", [["bg", "Background"], ["row", "Row"], ["beat", "Beat row"], ["panel", "Panel"], ["inset", "Inset"]]],
+  ["Text", [["txt", "Text"], ["note", "Notes"], ["muted", "Muted"], ["faint", "Faint"]]],
+  ["Accents", [["play", "Playing"], ["sel", "Selected"], ["chord", "Chords"], ["rec", "Record"], ["arp", "Arp"]]],
+  ["Tracks", [["t0", "BRK"], ["t1", "KIK"], ["t2", "PER"], ["t3", "BAS"], ["t4", "KEY"], ["t5", "SYN"]]],
+  ["Knob badges", [["k0", "Knob 1"], ["k1", "Knob 2"], ["k2", "Knob 3"], ["k3", "Knob 4"]]],
+  ["Blueprints", [["bp", "Blueprint"], ["bp2", "Lines"], ["bpdot", "Dots"]]],
+  ["Panel drawings", [["fbtn", "F buttons"], ["fbtn_top", "F button top"], ["wkey", "White key"], ["wkey_on", "White key lit"],
+    ["wkey_off", "White key off"], ["bkey_case", "Black key case"], ["bkey_off", "Black key off"]]],
+];
+const KEYS = FIELDS.flatMap(([, f]) => f.map(([k]) => k));       // 34, the wire's order
+const NW = 11 + KEYS.length * 3;
+
+const to565 = (hex) => { const n = parseInt(hex.slice(1), 16); return ((n >> 19) & 31) << 11 | ((n >> 10) & 63) << 5 | ((n >> 3) & 31); };
+const from565 = (c) => { const r = (c >> 11) & 31, g = (c >> 5) & 63, b = c & 31;
+  return "#" + [r * 255 / 31, g * 255 / 63, b * 255 / 31].map((v) => Math.round(v).toString(16).padStart(2, "0")).join(""); };
+const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const hex = (a) => "#" + a.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return hex(x.map((v, i) => v + (y[i] - v) * t)); };
+function lum(h) { return rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+  .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0); }
+const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+function hue(h, deg) {                          // the colour turned round the hue wheel
+  let [r, g, b] = rgb(h).map((v) => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let H = 0, S = 0;
+  if (mx !== mn) { const d = mx - mn; S = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    H = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; H *= 60; }
+  H = (H + deg + 360) % 360;
+  const q = l < 0.5 ? l * (1 + S) : l + S - l * S, p = 2 * l - q;
+  const f = (t) => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return hex([f(H / 360 + 1 / 3), f(H / 360), f(H / 360 - 1 / 3)].map((v) => v * 255));
+}
+
+/* ----------------------------------------------------------- the firmware in the page */
+let dev = null, playing = false, names = [];
+const run = (ms) => { for (let k = 0, n = Math.round(ms * 44.1); k < n; k += 128) dev.web_render(Math.min(128, n - k)); };
+const B = { FX: 0, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, "OCT+": 13 };
+function press(b, hold = 60) { dev.web_buttons(1 << B[b]); run(hold); dev.web_buttons(0); run(260); }
+const ctx = $("scr").getContext("2d"), img = ctx.createImageData(240, 240);
+function draw() {
+  const fb = new Uint16Array(dev.memory.buffer, dev.web_screen(), 240 * 240), d = img.data;
+  for (let i = 0; i < 240 * 240; i++) {
+    const v = fb[i], p = ((v >> 8) | (v << 8)) & 0xFFFF;
+    d[i * 4] = ((p >> 11) & 31) * 255 / 31; d[i * 4 + 1] = ((p >> 5) & 63) * 255 / 63; d[i * 4 + 2] = (p & 31) * 255 / 31; d[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function wireOf(theme) {
+  const w = new Uint8Array(NW), nm = theme.name.toUpperCase().slice(0, 11);
+  for (let i = 0; i < nm.length; i++) w[i] = nm.charCodeAt(i) & 127;
+  KEYS.forEach((k, i) => { const c = to565(theme.colors[k]); w[11 + i * 3] = c & 127; w[12 + i * 3] = (c >> 7) & 127; w[13 + i * 3] = c >> 14; });
+  return w;
+}
+function themeOf(w) {
+  let name = ""; for (let i = 0; i < 11 && w[i]; i++) name += String.fromCharCode(w[i]);
+  const colors = {}; KEYS.forEach((k, i) => { colors[k] = from565(w[11 + i * 3] | w[12 + i * 3] << 7 | (w[13 + i * 3] & 3) << 14); });
+  return { name: name.trim(), colors };
+}
+function devTheme(k) { dev.web_xn_theme_get(k); return themeOf(new Uint8Array(dev.memory.buffer, dev.web_xn_theme_buf(), NW).slice()); }
+function apply() {
+  if (!dev) return;
+  new Uint8Array(dev.memory.buffer, dev.web_xn_theme_buf(), NW).set(wireOf(cur));
+  dev.web_xn_theme_put(); run(80); draw();
+}
+const PAGES = [["HOM", () => press("HOME")], ["SAV", () => press("SAVE")], ["GEN", () => press("SAVE", 700)], ["SEQ", () => press("SEQ")],
+  ["EDT", () => press("EDIT")], ["ENV", () => press("ENV")], ["LFO", () => press("LFO")], ["MST", () => press("GLO")], ["FX", () => press("FX")]];
+function pageButtons() {
+  const box = $("pages");
+  for (const [n, f] of PAGES) {
+    const b = document.createElement("button"); b.className = "btn small ghost"; b.type = "button"; b.textContent = n;
+    b.addEventListener("click", () => { if (!dev) return; f(); run(120); draw(); }); box.appendChild(b);
+  }
+  const p = document.createElement("button"); p.className = "btn small"; p.type = "button"; p.textContent = "Play"; p.id = "play";
+  p.addEventListener("click", () => { if (!dev) return; press("PLAY"); playing = !playing; p.textContent = playing ? "Stop" : "Play"; p.classList.toggle("on", playing); if (playing) tick(); else { run(100); draw(); } });
+  box.appendChild(p);
+}
+let last = 0;
+function tick(t = 0) {
+  if (!playing || !dev) return;
+  if (t - last > 30) { run(Math.min(100, last ? t - last : 33)); draw(); last = t; }
+  requestAnimationFrame(tick);
+}
+async function boot() {
+  try {
+    const wasm = await (await fetch("emu/felucca.wasm")).arrayBuffer();
+    const { instance } = await WebAssembly.instantiate(wasm, {});
+    dev = instance.exports;
+    if (!dev.web_xn_theme_put) throw new Error("this emulator build has no THEME LAB");
+    dev._initialize(); dev.web_nor_erase(); dev.web_boot(); run(5600);
+    names = []; for (let k = 0; k < dev.web_xn_theme_count() - 1; k++) names.push(devTheme(k).name);
+    const sel = $("from");
+    names.forEach((n, k) => { const o = document.createElement("option"); o.value = k; o.textContent = n; sel.appendChild(o); });
+    sel.value = "0";
+    cur = devTheme(0); cur.name = "MY THEME";
+    paint(); apply();
+    $("vstatus").textContent = "Live: the firmware's own drawing. Change a colour and it redraws.";
+  } catch (e) { $("vstatus").textContent = `The preview didn't start: ${e.message}`; }
+}
+
+/* ----------------------------------------------------------- the colours */
+let cur = { name: "MY THEME", colors: Object.fromEntries(KEYS.map((k) => [k, "#808080"])) };
+function buildFields() {
+  const box = $("fields");
+  for (const [g, fs] of FIELDS) {
+    const p = document.createElement("div"); p.className = "panel group";
+    const h = document.createElement("h2"); h.textContent = g; p.appendChild(h);
+    const s = document.createElement("div"); s.className = "swatches";
+    for (const [k, label] of fs) {
+      const l = document.createElement("label"); l.className = "sw";
+      l.innerHTML = `<input type="color" id="c-${k}"><span>${label}<code id="h-${k}"></code></span>`;
+      s.appendChild(l);
+    }
+    p.appendChild(s); box.appendChild(p);
+  }
+  for (const k of KEYS) $(`c-${k}`).addEventListener("input", (e) => { cur.colors[k] = e.target.value; $(`h-${k}`).textContent = e.target.value; soon(); });
+}
+let tm = 0;
+function soon() { clearTimeout(tm); tm = setTimeout(() => { apply(); checks(); json(); }, 40); }
+function paint() {
+  for (const k of KEYS) { $(`c-${k}`).value = cur.colors[k]; $(`h-${k}`).textContent = cur.colors[k]; }
+  $("name").value = cur.name; checks(); json();
+}
+function checks() {
+  const c = cur.colors, rows = [["Text", c.txt, c.bg], ["Notes", c.note, c.row], ["Playing", c.play, c.bg], ["Selected", c.sel, c.bg], ["Muted", c.muted, c.bg]];
+  $("checks").innerHTML = rows.map(([n, f, b]) => { const r = contrast(f, b); return `<span class="chip ${r >= 4.5 ? "good" : r < 3 ? "weak" : ""}">${n} ${r.toFixed(1)}:1</span>`; }).join("");
+}
+function json() { $("json").value = JSON.stringify({ xenoise_theme: 1, name: cur.name, colors: cur.colors }, null, 1); }
+$("name").addEventListener("input", (e) => { cur.name = e.target.value.toUpperCase().replace(/[^ -~]/g, "").slice(0, 11); soon(); });
+$("from").addEventListener("change", (e) => { if (!dev) return; const t = devTheme(+e.target.value); cur = { name: cur.name, colors: t.colors }; paint(); apply(); });
+$("json").addEventListener("change", () => { try { take(JSON.parse($("json").value)); } catch (e) { $("mstatus").textContent = `That text isn't a theme: ${e.message}`; } });
+function take(o) {
+  if (!o || !o.colors) throw new Error("no colours in it");
+  for (const k of KEYS) if (!/^#[0-9a-f]{6}$/i.test(o.colors[k] || "")) throw new Error(`${k} is missing`);
+  cur = { name: String(o.name || "CUSTOM").toUpperCase().slice(0, 11), colors: { ...o.colors } }; paint(); apply();
+}
+
+/* quick build: three colours, the rest mixed as the cover themes were (xn_themes.h) */
+$("q-go").addEventListener("click", () => {
+  const bg = $("q-bg").value, tx = $("q-txt").value, ac = $("q-acc").value, dark = lum(bg) < lum(tx);
+  const shade = dark ? "#000000" : "#ffffff", ch = hue(ac, 40), cool = hue(ac, 180), red = mix(hue(ac, -30), "#e83028", 0.6);
+  const c = {
+    bg, row: mix(bg, tx, 0.05), beat: mix(bg, tx, 0.11), panel: mix(bg, tx, 0.22), inset: mix(bg, shade, 0.35),
+    txt: tx, note: mix(tx, ac, 0.25), muted: mix(bg, tx, 0.52), faint: mix(bg, tx, 0.2),
+    play: ac, sel: mix(cool, tx, 0.35), chord: ch, rec: red, arp: ch,
+    t0: ac, t1: mix(ac, bg, 0.2), t2: mix(ac, bg, 0.34), t3: red, t4: mix(cool, tx, 0.45), t5: mix(cool, tx, 0.45),
+    k0: ac, k1: ch, k2: mix(cool, tx, 0.35), k3: mix(tx, cool, 0.3),
+    bp: mix(bg, cool, 0.14), bp2: mix(bg, cool, 0.3), bpdot: mix(bg, tx, 0.08),
+    fbtn: mix(bg, tx, 0.17), fbtn_top: mix(bg, tx, 0.3), wkey: mix(bg, tx, 0.68), wkey_on: tx, wkey_off: mix(bg, tx, 0.3),
+    bkey_case: mix(bg, shade, 0.55), bkey_off: mix(bg, tx, 0.14),
+  };
+  cur = { name: cur.name, colors: c }; paint(); apply();
+});
+
+/* ----------------------------------------------------------- keep it: the FM-1, a file */
+async function fm() {
+  const midi = await midiAccess(navigator, (t) => {});
+  const outs = [...midi.outputs.values()];
+  for (const input of midi.inputs.values()) {
+    if (!PORT_RE.test(input.name || "")) continue;
+    const output = pairOutput(input, outs);
+    if (!output) continue;
+    try { await input.open(); await output.open(); } catch (_) { continue; }
+    return { c: new BackupConnection(input, output), name: input.name };
+  }
+  throw new Error("no FM-1 found: plug it in, close other MIDI programs");
+}
+$("send").addEventListener("click", async () => {
+  $("mstatus").textContent = "Sending…";
+  let link = null;
+  try {
+    link = await fm();
+    const a = await link.c.request([99, [...wireOf(cur)]], { timeout: 1500, retries: 1 });
+    $("mstatus").textContent = a[0] ? `Sent to ${link.name}: it shows now, and is saved when you stop the sequence.` : `Sent to ${link.name} and saved. It's CUSTOM in MST › SYSTEM › THEME.`;
+  } catch (e) { $("mstatus").textContent = `Not sent: ${e.message}. (Needs a XENOISE build from November 2026 or newer.)`; }
+  finally { link && link.c.close && link.c.close(); }
+});
+$("read").addEventListener("click", async () => {
+  $("mstatus").textContent = "Reading…";
+  let link = null;
+  try {
+    link = await fm();
+    const a = await link.c.request([100, [127]], { timeout: 1500, retries: 1 });
+    const t = themeOf(a.slice(2)); cur = t; paint(); apply();
+    $("mstatus").textContent = `Read ${t.name} from ${link.name}.`;
+  } catch (e) { $("mstatus").textContent = `Not read: ${e.message}.`; }
+  finally { link && link.c.close && link.c.close(); }
+});
+$("export").addEventListener("click", async () => {
+  const text = $("json").value;
+  if (inArtifact) {                              // no downloads here: the text, to copy
+    $("json").closest("details").open = true;
+    try { await navigator.clipboard.writeText(text); $("mstatus").textContent = "Copied the theme as text."; }
+    catch (_) { $("json").select(); $("mstatus").textContent = "Select-all is on the text below: copy it."; }
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = `${(cur.name || "theme").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.xenoise-theme.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+$("import").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { take(JSON.parse(await f.text())); $("mstatus").textContent = `Loaded ${f.name}.`; }
+  catch (err) { $("mstatus").textContent = `That file isn't a theme: ${err.message}`; }
+});
+if (inArtifact || !navigator.requestMIDIAccess) {
+  $("send").disabled = $("read").disabled = true;
+  $("mnote").textContent = "Sending to the FM-1 needs USB MIDI: open the Theme Lab on the XENOISE site in Chrome or Edge on a computer. Export the theme as text here and import it there.";
+}
+buildFields(); pageButtons(); boot();
+</script>

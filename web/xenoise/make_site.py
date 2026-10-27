@@ -4,6 +4,7 @@
 
   web/xenoise/make_site.py PKG OUT_DIR [VERSION]
 
+  OUT_DIR/theme.html             the Theme Lab: a theme made on the firmware's own pages (the emulator in the page)
   OUT_DIR/index.html             the Pilot's Dock (web/xenoise/index.html): the installer (JIANT's fm1pkg.js,
                                  fm1ota.js, fm1backup.js and fm1diag.js inlined), the tutorial, the cheat sheet
   OUT_DIR/firmware/xenoise.fwsc  the package it installs (+ LICENSE, LICENSING.md, LICENSES/)
@@ -24,12 +25,12 @@ LIBS = ("fm1pkg.js", "fm1ota.js", "fm1backup.js", "fm1diag.js")
 EMU = ("index.html", "worklet.js", "felucca.wasm", "stems.js", "fm1backup.js")
 
 
-def page(meta):
-    body = (HERE / "index.html").read_text(encoding="utf-8")
+def page(meta, name="index.html"):
+    body = (HERE / name).read_text(encoding="utf-8")
     lib = "\n".join(strip_module((HERE.parent / f).read_text(encoding="utf-8")) for f in LIBS)
     for mark in ("/*LIB*/", "/*META*/"):
         if body.count(mark) != 1:
-            raise SystemExit(f"web/xenoise/index.html must contain {mark} once")
+            raise SystemExit(f"web/xenoise/{name} must contain {mark} once")
     return body.replace("/*LIB*/", lib).replace("/*META*/", json.dumps(meta))
 
 
@@ -52,6 +53,7 @@ def main(pkg, out, version="latest"):
         d.mkdir(parents=True, exist_ok=True)
     (out / "index.html").write_text(document(page({"version": version, "product": product, "pkg": "firmware/xenoise.fwsc"})),
                                     encoding="utf-8")
+    (out / "theme.html").write_text(document(page({"version": version}, "theme.html")), encoding="utf-8")
     shutil.copy(pkg, fw / "xenoise.fwsc")
     for f in ("LICENSE", "LICENSING.md"):
         shutil.copy(ROOT / f, fw / f)
@@ -65,6 +67,7 @@ def main(pkg, out, version="latest"):
     (emu / "index.html").write_text(e.replace("<title>JIANT FM</title>", "<title>XENOISE</title>"), encoding="utf-8")
     shutil.copytree(src / "fonts", emu / "fonts", dirs_exist_ok=True)
     (ROOT / "build" / "xenoise_dock.html").write_text(page({"version": version, "product": product, "pkg": ""}), encoding="utf-8")
+    (ROOT / "build" / "xenoise_theme.html").write_text(page({"version": version}, "theme.html"), encoding="utf-8")
     print(f"xenoise site: {out} ({product}, {len(raw)} B package, emulator); build/xenoise_dock.html")
 
 

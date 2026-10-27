@@ -136,10 +136,27 @@ int main(void)
         web_enc(EN_K1, (int32_t)WB_NTHEME - 2); run_ms(60);
         check("  all the way: the last of the covers' themes", TH == &WB_THEMES[WB_NTHEME - 1u]);
         web_enc(EN_K1, 1); run_ms(60);
+        check("  one more: CUSTOM (CONCRETE's colours until the THEME LAB sends one)", TH == &xn_custom && xn_custom.bg == WB_THEMES[0].bg);
+        web_enc(EN_K1, 1); run_ms(60);
         check("  one more: round to CONCRETE", TH == &WB_THEMES[0]);
         web_enc(EN_SELECT, 1); run_ms(60);
         web_enc(EN_SELECT, -1); run_ms(60);
         check("  SELECT on THEME: on and back, CONCRETE (the default)", TH == &WB_THEMES[0] && (xn_prefs & 15u) == 0u);
+        {   /* (XENOISE) THEME LAB: a theme on the wire (editor 99 / the emulator's web_xn_theme_put), CUSTOM, kept */
+            uint8_t w[THEME_WIRE];
+            uint32_t k;
+            theme_wire_get(1u, w);                  /* COMBAT's colours ... */
+            memcpy(w, "my theme\0\0\0", 11);       /* ... under a name of ours */
+            w[11] = 0x1F; w[12] = 0x00; w[13] = 0x00;   /* bg: RGB565 0x001F */
+            k = theme_wire_put(w);
+            check("  THEME LAB: a theme from the wire is CUSTOM, picked, named, its colours", TH == &xn_custom && (xn_prefs & 15u) == WB_NTHEME
+                  && !strcmp(xn_custom.tname, "MY THEME") && xn_custom.bg == 0x001Fu && xn_custom.sel == WB_THEMES[1].sel && k == 0u);
+            xn_custom.bg = 0; theme_load();
+            check("  ... saved: read back at the next start", xn_custom.bg == 0x001Fu);
+            k = theme_wire_get(127u, w);
+            check("  ... and read back over the wire as the one shown", k == WB_NTHEME && w[11] == 0x1F && w[0] == 'M');
+            xj_pref_set(xj_pref() & ~15u); theme_apply();
+        }
         web_enc(EN_PRESET, 1); run_ms(60);
         check("  PRESETS: round to TEMPO", sub == 0u);
         {

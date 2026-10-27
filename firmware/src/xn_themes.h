@@ -85,5 +85,19 @@ static const wb_theme_t WB_THEMES[WB_NTHEME] = {
      RGB(33, 33, 33), RGB(56, 56, 56), RGB(26, 26, 26),
      RGB(46, 46, 46), RGB(73, 73, 73), RGB(172, 172, 172), RGB(235, 235, 235), RGB(73, 73, 73), RGB(4, 4, 4), RGB(42, 42, 42)}
 };
-static uint32_t xn_theme_index(void) { return (uint32_t)(favorites.factory[15][31] & 15u) % WB_NTHEME; }
+/* (XENOISE) CUSTOM, the theme after the list: the Dock's THEME LAB makes it (editor 99 XN_THEME), wb_ui.c keeps it in
+ * the flash sector after the store (xn_theme_load / xn_theme_store); until one comes, CONCRETE's colours */
+#define XN_NTHEME (WB_NTHEME + 1u)
+#define XN_TH_NCOL 34u                          /* the colours from bg to bkey_off, in the struct's order */
+static char xn_custom_name[12] = "CUSTOM";
+static wb_theme_t xn_custom;
+static uint16_t *xn_theme_cols(wb_theme_t *t) { return &t->bg; }
+typedef char xn_theme_cols_packed[__builtin_offsetof(wb_theme_t, bkey_off) + 2u - __builtin_offsetof(wb_theme_t, bg) == XN_TH_NCOL * 2u ? 1 : -1];
+static uint32_t xn_theme_index(void) { return (uint32_t)(favorites.factory[15][31] & 15u) % XN_NTHEME; }
+static const wb_theme_t *xn_theme_ptr(uint32_t i)
+{
+    if (i < WB_NTHEME) return &WB_THEMES[i];
+    if (!xn_custom.tname) { xn_custom = WB_THEMES[0]; xn_custom.tname = xn_custom_name; }
+    return &xn_custom;
+}
 #endif

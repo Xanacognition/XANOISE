@@ -118,7 +118,7 @@ static void vis_step(void);
 static uint8_t sng_taps, sng_fx;                /* (XENOISE) SAV: OCT+ taps counted; the store's last action (its animation) */
 static uint32_t sng_tap_ms, sng_fx_ms;
 static int jam_nav(void) { return (xj_pref() >> 4) & 1u; }   /* SETTINGS: HOM's black keys the tracks and F1..F4 */
-static void theme_apply(void) { TH = &WB_THEMES[xn_theme_index()]; g_force = 1; }
+static void theme_apply(void) { TH = xn_theme_ptr(xn_theme_index()); g_force = 1; }
 static uint32_t fx_rel_ms, arp_rel_ms, seq_down_ms;
 #define LATCH_MS 400u
 #define ARM_MS 8000u                            /* (XENOISE: a question waits 8 s, was 3) */
@@ -269,6 +269,98 @@ static int song_load(uint32_t k)
     return 0;
 }
 
+/* (XENOISE) the CUSTOM theme (xn_themes.h): the Dock's THEME LAB sends it, the sector after the store keeps it
+ * (0xD7000: free in JIANT's map, storage.c). Written stopped only (an erase stalls the sound): one that comes while
+ * the sequence plays shows at once and is saved at the next stop.
+ * On the wire (editor 99 XN_THEME_PUT, 100 XN_THEME_GET; the emulator's web_xn_theme_*): the name in 11 bytes
+ * (ASCII, 0-padded), then the 34 colours (RGB565, xn_themes.h's order) as 3 bytes each, 7 + 7 + 2 bits */
+#define THEME_MAGIC 0x4D454854u                 /* "THEM" */
+#define THEME_WIRE (11u + XN_TH_NCOL * 3u)
+typedef struct { uint32_t magic; char name[12]; uint16_t c[XN_TH_NCOL]; uint32_t crc; } xn_theme_rec_t;
+static uint8_t theme_dirty;
+#if defined(DINGHY_HOST) || defined(KAWA_WASM) || defined(XN_WB_RAMSTORE)
+static xn_theme_rec_t host_theme;
+static int theme_rec_read(xn_theme_rec_t *r) { *r = host_theme; return 0; }
+static int theme_rec_write(const xn_theme_rec_t *r) { host_theme = *r; return 0; }
+#else
+#define THEME_AT (STORE_LO + NSTORE * SLOT_SIZE)
+typedef char theme_fits[THEME_AT + 0x1000u <= STORE_HI ? 1 : -1];
+static int theme_rec_read(xn_theme_rec_t *r) { return st_read(THEME_AT, r, sizeof *r); }
+static int theme_rec_write(const xn_theme_rec_t *r)
+{
+    int rc;
+    if ((rc = st_erase(THEME_AT)) != 0) return rc;
+    if ((rc = st_prog(THEME_AT + 4u, (const uint8_t *)r + 4u, sizeof *r - 4u)) != 0) return rc;
+    return st_prog(THEME_AT, r, 4u);            /* the magic last: a cut write stays invalid */
+}
+#endif
+static uint32_t theme_rec_crc(const xn_theme_rec_t *r)
+{
+    return ~crc_step(0xFFFFFFFFu, (const uint8_t *)r->name, (uint32_t)(sizeof r->name + sizeof r->c));
+}
+static void theme_take(const char *name, const uint16_t *c)     /* into CUSTOM */
+{
+    uint32_t i;
+    xn_theme_ptr(WB_NTHEME);
+    memcpy(xn_theme_cols(&xn_custom), c, XN_TH_NCOL * 2u);
+    for (i = 0; i < 11u && name[i]; i++)
+        xn_custom_name[i] = name[i] >= 'a' && name[i] <= 'z' ? (char)(name[i] - 32) : name[i] >= ' ' && name[i] < 127 ? name[i] : ' ';
+    xn_custom_name[i] = 0;
+    if (!i) str_cat((xn_custom_name[0] = 0, xn_custom_name), "CUSTOM");
+}
+static void theme_load(void)                    /* at start: CUSTOM as it was saved */
+{
+    xn_theme_rec_t r;
+    if (!theme_rec_read(&r) && r.magic == THEME_MAGIC && theme_rec_crc(&r) == r.crc) {
+        r.name[11] = 0;
+        theme_take(r.name, r.c);
+    }
+}
+static int theme_save(void)
+{
+    xn_theme_rec_t r;
+    memset(&r, 0, sizeof r);
+    r.magic = THEME_MAGIC;
+    memcpy(r.name, xn_custom_name, 12);
+    memcpy(r.c, xn_theme_cols(&xn_custom), sizeof r.c);
+    r.crc = theme_rec_crc(&r);
+    return theme_rec_write(&r);
+}
+static void theme_poll(void) { if (theme_dirty && !sq_play) { theme_dirty = 0; theme_save(); } }
+static uint32_t theme_wire_put(const uint8_t *a)   /* a theme from the wire: CUSTOM, picked; 0 saved, 1 saved at the stop */
+{
+    uint16_t c[XN_TH_NCOL];
+    char name[12];
+    uint32_t i;
+    for (i = 0; i < 11u; i++) name[i] = (char)(a[i] & 127u);
+    name[11] = 0;
+    for (i = 0; i < XN_TH_NCOL; i++)
+        c[i] = (uint16_t)(a[11u + i * 3u] | (uint32_t)a[12u + i * 3u] << 7 | (uint32_t)(a[13u + i * 3u] & 3u) << 14);
+    theme_take(name, c);
+    xj_pref_set((xj_pref() & ~15u) | WB_NTHEME);
+    theme_apply();
+    theme_dirty = 1;
+    theme_poll();
+    return theme_dirty;
+}
+static uint32_t theme_wire_get(uint32_t k, uint8_t *o)   /* theme k (127: the one shown) to the wire; -> its index */
+{
+    const wb_theme_t *t;
+    const uint16_t *c;
+    uint32_t i;
+    if (k >= XN_NTHEME) k = xn_theme_index();
+    t = xn_theme_ptr(k);
+    c = &t->bg;
+    for (i = 0; i < 11u; i++) o[i] = 0;
+    for (i = 0; i < 11u && t->tname[i]; i++) o[i] = (uint8_t)(t->tname[i] & 127);
+    for (i = 0; i < XN_TH_NCOL; i++) {
+        o[11u + i * 3u] = (uint8_t)(c[i] & 127u);
+        o[12u + i * 3u] = (uint8_t)((c[i] >> 7) & 127u);
+        o[13u + i * 3u] = (uint8_t)(c[i] >> 14);
+    }
+    return k;
+}
+
 /* (XENOISE) the Dock's EXPORT (editor SysEx, editor.c): the songs leave over USB-MIDI to be rendered, stemmed or
  * turned into MIDI in the browser.
  *   96 XN_LIST                -> the slots: their count, then each: held (0/1), its name (0-terminated)
@@ -297,6 +389,17 @@ static int xn_ed_handle(uint32_t cmd, const uint8_t *a, uint32_t na)
         }
         ed_b(n); ed_b(n >> 7);
         for (i = 0; i < n; i++) { ed_b(buf[i] >> 4); ed_b(buf[i] & 15u); }
+        return 1;
+    }
+    if (cmd == 99u && na == THEME_WIRE) {       /* 99 XN_THEME_PUT: CUSTOM, picked -> 0 saved, 1 at the next stop */
+        ed_b(theme_wire_put(a));
+        return 1;
+    }
+    if (cmd == 100u && na == 1u) {              /* 100 XN_THEME_GET k (127: the one shown) -> k, the count, the theme */
+        uint8_t o[THEME_WIRE];
+        k = theme_wire_get(a[0], o);
+        ed_b(k); ed_b(XN_NTHEME);
+        for (i = 0; i < THEME_WIRE; i++) ed_b(o[i]);
         return 1;
     }
     return 0;
@@ -602,7 +705,7 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
         uint32_t v = xj_pref();
         if (i == 0u) {
             str_cat(lab, "THEME");
-            if (dd) { v = (v & ~15u) | (uint32_t)(((int32_t)(v & 15u) % (int32_t)WB_NTHEME + dd % (int32_t)WB_NTHEME + (int32_t)WB_NTHEME) % (int32_t)WB_NTHEME); xj_pref_set(v); theme_apply(); }   /* (round and round) */
+            if (dd) { v = (v & ~15u) | (uint32_t)(((int32_t)(v & 15u) % (int32_t)XN_NTHEME + dd % (int32_t)XN_NTHEME + (int32_t)XN_NTHEME) % (int32_t)XN_NTHEME); xj_pref_set(v); theme_apply(); }   /* (round and round) */
             str_cat(val, TH->tname);
         } else if (i == 1u) {
             str_cat(lab, "BLACK");
@@ -2579,12 +2682,14 @@ static void app_init(void)
     } else genre_pick = song.genre;
     sq_req = 0;
     prog_sel = song.prog;
+    theme_load();                               /* (XENOISE) CUSTOM, as saved */
     theme_apply();                              /* (XENOISE) SETTINGS' theme */
 }
 static void app_step(void)
 {
     uint32_t t;
     ui_input();
+    theme_poll();                               /* (XENOISE) a CUSTOM theme that came while playing: saved stopped */
     if (sq_end_pi != 0xFF) {
         uint32_t pi = sq_end_pi;
         sq_end_pi = 0xFF;
