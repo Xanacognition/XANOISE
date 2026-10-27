@@ -180,7 +180,8 @@ static void xn_master(int32_t *l, int32_t *r, const int32_t *wet, uint32_t n)
 {
     uint32_t i, c, bits = 16u - xn_crush / 10u, sh = xn_crush >= 6u ? 16u - bits : 0u;
     uint32_t hold = xn_crush > 40u ? 1u + (xn_crush - 40u) / 15u : 1u;
-    int32_t a = 32768 - (int32_t)xn_age * 228, dep = (int32_t)xn_age * 77;   /* (the pole, Q15; wow's depth, Q8 samples) */
+    int32_t a = 32768 - (int32_t)xn_age * 228, dep = (int32_t)xn_age * 77, dep8 = dep >> 3;   /* (the pole, Q15; wow's and
+                                                    * flutter's depths, Q8 samples: per block, not per sample) */
     if (!xn_age && !sh && hold == 1u)
         return;
     for (i = 0; i < n; i++) {
@@ -188,7 +189,7 @@ static void xn_master(int32_t *l, int32_t *r, const int32_t *wet, uint32_t n)
         x[0] = l[i] + wet[i];
         x[1] = r[i] + wet[i];
         if (xn_age) {                               /* the tape: through the line, read wavering */
-            int32_t d = 32 * 256 + ((dep * sine_i(xn_wow_ph)) >> 15) + ((dep / 8 * sine_i(xn_flut_ph)) >> 15);
+            int32_t d = 32 * 256 + ((dep * sine_i(xn_wow_ph)) >> 15) + ((dep8 * sine_i(xn_flut_ph)) >> 15);
             uint32_t p0 = xn_wow_w - (uint32_t)(d >> 8), f = (uint32_t)d & 255u;
             xn_wow_ph += 58434u;                    /* (0.6 Hz) */
             xn_flut_ph += 681725u;                  /* (7 Hz) */
@@ -205,7 +206,7 @@ static void xn_master(int32_t *l, int32_t *r, const int32_t *wet, uint32_t n)
         }
         if (hold > 1u) {                            /* the rate held */
             if (xn_hold_n == 0u) { xn_hold[0] = x[0]; xn_hold[1] = x[1]; }
-            xn_hold_n = (xn_hold_n + 1u) % hold;
+            if (++xn_hold_n >= hold) xn_hold_n = 0;   /* (no division a sample) */
             x[0] = xn_hold[0];
             x[1] = xn_hold[1];
         }
