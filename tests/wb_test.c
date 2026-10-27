@@ -168,6 +168,13 @@ int main(void)
         sel_trk = T_BAS;
         tap(B_ENV);
         check("ENV: its page", page == PG_ENV);
+        tap(B_ENV);
+        {
+            char lab[16] = "", val[24] = "";
+            wb_knob(0, 0, lab, val);
+            check("  ENV again (a synth): page 2, the filter envelope", sub == 1u && !strcmp(lab, "F.ENV"));
+        }
+        tap(B_ENV);
         run_ms(100);
         tap(B_LFO);
         check("LFO: its page", page == PG_LFO);
@@ -240,6 +247,9 @@ int main(void)
         check("  K2, OCT-: not pasted", arm_f == 0xFF);
         web_enc(EN_K2, 1); run_ms(60); tap(B_OCTUP);
         check("  K2 at slot 2, OCT+: pasted", wb_song.chain[1] == arr_clip);
+        arr_fn(3);
+        check("  F4 UNDO: the paste undone", wb_song.chain[1] != arr_clip || arr_clip == S_INTRO);
+        web_enc(EN_K2, 1); run_ms(60); tap(B_OCTUP);
         tap(B_OCTUP);
         check("  OCT+: a slot added", wb_song.nchain == n0 + 1u);
         tap(B_OCTDN);
@@ -303,6 +313,16 @@ int main(void)
         check("  OCT-: DELETE asked", arm_f == 3u && slot_ok[5]);
         tap(B_OCTDN);
         check("  OCT- again: slot 5 deleted", !slot_ok[5]);
+        web_buttons(1u << B_SEQ); run_ms(60); web_buttons((1u << B_SEQ) | (1u << B_OCTDN)); run_ms(60); web_buttons(0); run_ms(120);
+        check("  SEQ + OCT-: UNDO, slot 5 back, the page stays", page == PG_SNG && slot_ok[5] && !memcmp(slot_name[5], nm, 15));
+        {
+            char now[16];
+            memcpy(now, wb_song.wb_name, 16);
+            tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP); tap(B_OCTUP);
+            check("  a new song generated", memcmp(wb_song.wb_name, now, 15) != 0);
+            web_buttons(1u << B_SEQ); run_ms(60); web_buttons((1u << B_SEQ) | (1u << B_OCTDN)); run_ms(60); web_buttons(0); run_ms(120);
+            check("  UNDO: the song before it", !memcmp(wb_song.wb_name, now, 15));
+        }
         /* SAVE held: GEN, the next song's options */
         web_buttons(1u << B_SAVE); run_ms(600); web_buttons(0); run_ms(120);
         check("SAVE held: GEN", page == PG_GEN && sub == 0u);
@@ -324,6 +344,10 @@ int main(void)
         ng_prog = ng_cspace = ng_bpm = ng_key = 0;
         tap(B_HOME);
     }
+    web_buttons(1u << B_ARP); run_ms(600); web_buttons(0); run_ms(60);
+    check("ARP held on HOM: NOTE REPEAT on, the page stays", arp_on() && page == PG_TRK);
+    web_buttons(1u << B_ARP); run_ms(600); web_buttons(0); run_ms(60);
+    check("  held again: off", !arp_on() && page == PG_TRK);
     tap(B_FX);
     check("FX: a tap opens PERFORM, it stays", wb_fx_on());
     tap(B_FX);

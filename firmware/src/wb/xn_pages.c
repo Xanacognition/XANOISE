@@ -21,9 +21,16 @@ static const pd_t ENV_DRM[4] = {{"TUNE", PS_TUNE, -12, 12, F_ST, 1}, {"DECAY", P
                                 {"TONE", PS_TONE, 0, 100, F_PCT, 1}, {"SNAP", PS_SNAP, 0, 100, F_PCT, 1}};
 static const pd_t ENV_BRK[4] = {{"PITCH", PB_PITCH, -12, 12, F_ST, 1}, {"GATE", PB_GATE, 10, 200, F_PCT, 1},
                                 {"TONE", PB_TONE, 0, 100, F_HZ, 1}, PD_END};
+/* (XENOISE) ENV again: its page 2, where the track has one: the synth's filter envelope, the kit's hats */
+static const pd_t ENV_SYN2[4] = {{"F.ENV", PY_FENV, 0, 400, F_X100, 1}, {"RESO", PY_RESO, 5, 180, F_X10, 1},
+                                 {"SWOOP", PY_GLIDE, -12, 12, F_ST, 1}, {"VIB", PY_VIB, 0, 60, F_CT, 1}};
+static const pd_t ENV_HAT[4] = {{"H.TUNE", PH_TUNE, -12, 12, F_ST, 1}, {"H.DEC", PH_DECAY, 20, 400, F_MS, 1},
+                                {"H.TONE", PH_TONE, 0, 100, F_PCT, 1}, {"METAL", PH_METAL, 0, 100, F_PCT, 1}};
+static uint32_t env_npages(uint32_t t) { return TRK_TYPE[t] == TY_SYNTH || TRK_TYPE[t] == TY_DRUMS ? 2u : 1u; }
 static const pd_t *env_pd(uint32_t t, uint32_t i)
 {
     const pd_t *d = TRK_TYPE[t] == TY_SYNTH ? ENV_SYN : TRK_TYPE[t] == TY_KICK ? ENV_KICK : TRK_TYPE[t] == TY_DRUMS ? ENV_DRM : ENV_BRK;
+    if (sub % env_npages(t) == 1u) d = TRK_TYPE[t] == TY_SYNTH ? ENV_SYN2 : ENV_HAT;
     return i < 4u && d[i].lab ? &d[i] : 0;
 }
 static uint32_t env_note(uint32_t t) { return TRK_TYPE[t] == TY_DRUMS ? DN_SNR : TRK_TYPE[t] == TY_SYNTH ? (last_note[t] ? last_note[t] : 60u) : pad_note(t, 0); }
@@ -38,7 +45,7 @@ static int env_knob(uint32_t t, uint32_t i, int32_t dd, char *lab, char *val)
         pd_set(d, t, step_of(d, v, dd));
         v = pd_get(d, t);
         touch();
-        if (!sq_play) audition(t, env_note(t));
+        if (!sq_play) audition(t, TRK_TYPE[t] == TY_DRUMS && sub % 2u ? DN_HAT : env_note(t));
     }
     pd_fmt(val, d, v, t);
     return 1;

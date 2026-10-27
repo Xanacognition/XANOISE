@@ -28,7 +28,7 @@
 enum { PG_TRK, PG_SNG, PG_CHD, PG_ENV, PG_LFO, PG_ARR, PG_SND, PG_MST, PG_N, PG_GEN = PG_N, PG_MIX, PG_ARP, PG_ALL };
 static const char *const PG_NAME[PG_ALL] = {"HOM", "SAV", "CHD", "ENV", "LFO", "SEQ", "EDT", "MST", "GEN", "MIX", "ARP"};
 static const char *const PG_HINT[PG_ALL] = {"SELECT ROW, PLAY PADS", "", "WHITE KEYS: CHORDS",
-                                            "THE SOUND'S SHAPE", "LFO AGAIN: PAGE 2", "SEQ AGAIN: LIVE",
+                                            "ENV AGAIN: PAGE 2", "LFO AGAIN: PAGE 2", "SEQ AGAIN: LIVE",
                                             "EDIT THE SOUND", "SEL GROUP ALG PARAM", "HOLD SAVE: BACK",
                                             "ALG TRACK  GLO: BACK", "ARP AGAIN: PAGE 2"};
 static uint32_t tab_of(uint32_t pg) { return pg == PG_GEN ? PG_SNG : pg == PG_MIX ? PG_MST : pg == PG_ARP ? 0xFFu : pg; }
@@ -95,7 +95,8 @@ enum { SA_SAVE, SA_NEW, SA_LOAD, SA_DELETE, SA_COPY, SA_PASTE, SA_INSERT, SA_OUT
 static uint8_t sng_clip = 0xFF;                 /* COPY's slot (PASTE and INSERT write it) */
 static uint8_t arm_oct;                         /* DELETE asked by OCT- (OCT- again: yes, OCT+: no); a knob's: OCT+ yes */
 static uint8_t fx_row, fx_col;                  /* (XENOISE) PERFORM's PILOT: the row (the punch-ins, the tracks), the column */
-static uint8_t vis_arp_held;                    /* (XENOISE) ARP down on the visualizer (held: ALL RANGE) */
+static uint8_t vis_arp_held, arp_used;          /* (ARP's tap or hold) */
+static uint32_t arp_down_ms;                    /* (XENOISE) ARP down on the visualizer (held: ALL RANGE) */
 static uint8_t save_used;                       /* SAVE held: GEN (its release then does nothing) */
 static uint32_t save_down_ms;
 #define ARR_ASK 0x10u                           /* (XENOISE) arm_f: SEQ's K1..K4 asked */
@@ -107,6 +108,7 @@ static int lfo_knob(uint32_t t, uint32_t i, int32_t dd, char *lab, char *val);
 static int arp_knob(uint32_t t, uint32_t i, int32_t dd, char *lab, char *val);
 static int fx_knob(uint32_t i, int32_t dd, char *lab, char *val);
 static uint32_t env_note(uint32_t t);
+static uint32_t env_npages(uint32_t t);
 static void fx_reset(void);
 static uint8_t lfo_pg;
 static uint8_t hom_edit, home_used;             /* (XENOISE) HOM: HOME again shows NOTE VEL FX AMT; HOME used with a key */
@@ -156,11 +158,13 @@ static void drm_name(uint32_t n, char *o)       /* "SNR +2", "HHO -1" */
 /* ================================================================ the store */
 #define SLOT_SIZE 0x4000u
 #define NSLOT 15u                               /* slot 0 the autosave, 14 for songs */
+#define UNDO_SLOT NSLOT                         /* (XENOISE) one more: UNDO's (what the last change took) */
+#define NSTORE (NSLOT + 1u)
 typedef char song_fits_a_slot[sizeof(song_t) <= SLOT_SIZE ? 1 : -1];
-static char slot_name[NSLOT][16];
-static uint8_t slot_ok[NSLOT];
+static char slot_name[NSTORE][16];
+static uint8_t slot_ok[NSTORE];
 #if defined(DINGHY_HOST) || defined(KAWA_WASM) || defined(XN_WB_RAMSTORE)   /* (XENOISE: its emulator and tests) */
-static uint8_t host_flash[NSLOT][SLOT_SIZE];
+static uint8_t host_flash[NSTORE][SLOT_SIZE];
 static uint32_t store_gen;
 static int store_read(uint32_t k, uint32_t off, void *p, uint32_t n) { memcpy(p, host_flash[k] + off, n); return 0; }
 static int store_write(uint32_t k, const void *p, uint32_t n) { memcpy(host_flash[k], p, n); store_gen++; return 0; }
@@ -185,7 +189,7 @@ static int store_write(uint32_t k, const void *p, uint32_t n)
     return st_prog(slot_at(k), (const uint8_t *)p, 8u);
 }
 #endif
-typedef char store_fits[STORE_LO + NSLOT * SLOT_SIZE <= STORE_HI ? 1 : -1];
+typedef char store_fits[STORE_LO + NSTORE * SLOT_SIZE <= STORE_HI ? 1 : -1];
 static uint32_t crc_step(uint32_t c, const uint8_t *p, uint32_t n)
 {
     uint32_t k;
@@ -213,7 +217,7 @@ static int slot_valid(uint32_t k, char *name)   /* the slot holds a song (its CR
 static void slots_scan(void)
 {
     uint32_t k;
-    for (k = 0; k < NSLOT; k++) {
+    for (k = 0; k < NSTORE; k++) {
         slot_ok[k] = (uint8_t)slot_valid(k, slot_name[k]);
         if (!slot_ok[k]) slot_name[k][0] = 0;
     }
@@ -265,6 +269,33 @@ static int song_load(uint32_t k)
     return 0;
 }
 
+/* (XENOISE) UNDO: one change back. What the change took goes to UNDO's slot (a song, or a slot's song) or, for the
+ * sequence, a copy here; SEQ held + OCT- (anywhere), or UNDO's F button, puts it back. The store is written stopped only
+ * (an erase stalls the sound): a song replaced while it plays has no undo */
+enum { U_NONE, U_SONG, U_SLOT, U_INSERT, U_OUTSERT, U_CHAIN };
+static uint8_t xu_kind, xu_at, xu_chain[16], xu_nchain;
+static void xu_slot(uint32_t k)               /* slot k as it is, before a change to it */
+{
+    if (slot_ok[k]) slot_copy(UNDO_SLOT, k);
+    else if (slot_ok[UNDO_SLOT]) { store_erase(UNDO_SLOT); slot_ok[UNDO_SLOT] = 0; }
+    xu_kind = U_SLOT;
+    xu_at = (uint8_t)k;
+}
+static int xu_song(void)                      /* the song in memory, before it is replaced */
+{
+    uint8_t keep = song.loop;
+    if (sq_play) { xu_kind = U_NONE; return 0; }
+    if (song_save(UNDO_SLOT)) { xu_kind = U_NONE; return 0; }
+    song.loop = keep;
+    xu_kind = U_SONG;
+    return 1;
+}
+static void xu_chain_take(void)
+{
+    memcpy(xu_chain, song.chain, 16);
+    xu_nchain = song.nchain;
+    xu_kind = U_CHAIN;
+}
 /* ================================================================ the knobs
  * a sound parameter: its place in p[], its range and how it reads */
 enum { F_INT, F_ST, F_MS, F_PCT, F_X10, F_X100, F_CHORD, F_RATIO, F_WAVE, F_UNI, F_CT, F_VOWEL, F_CTR, F_SYN, F_BRK, F_HZ,
@@ -748,7 +779,9 @@ static const char *fn_label(uint32_t i, char *buf)
     char *e;
     buf[0] = 0;
     switch (page) {
-    case PG_ENV: return (const char *const[]){"", "PLAY", "", ""}[i];
+    case PG_ENV:
+        if (i == 0u && env_npages(t) > 1u) { e = str_cat(buf, "PG "); e = fmt_u(e, sub % 2u + 1u, 0); str_cat(e, "/2"); return buf; }
+        return (const char *const[]){"", "PLAY", "", ""}[i];
     case PG_LFO:
         if (i == 0u) { e = str_cat(buf, "PG "); e = fmt_u(e, (lfo_pg & 1u) + 1u, 0); str_cat(e, "/2"); return buf; }
         return (const char *const[]){"", "", "", "RESET"}[i];
@@ -764,13 +797,14 @@ static const char *fn_label(uint32_t i, char *buf)
         return (const char *const[]){"", "PLAY", "RAND", "INIT"}[i];
     case PG_SNG:
         if (arm_f == i) return "SURE?";
+        if (sub & 1u) return (const char *const[]){"UNDO", "", "", ""}[i];   /* (XENOISE: page 2) */
         return (const char *const[]){"SAVE", "NEWSONG", "LOAD", "DELETE"}[i];
     case PG_CHD: return (const char *const[]){"WRITE", "NEWPROG", "UNDO", "HEAR"}[i];
     case PG_GEN:
         if (sub < 2u) {
             if (i == 0u) { e = str_cat(buf, "PG "); e = fmt_u(e, sub + 1u, 0); str_cat(e, "/3"); return buf; }
             if (i == 1u) return arm_f == SA_NEW ? "SURE?" : "CREATE";
-            return (const char *const[]){"", "", "", "AUTO"}[i];
+            return (const char *const[]){"", "", "UNDO", "AUTO"}[i];
         }
         return (const char *const[]){"FILL", "DICE", "RESTORE", "FILLALL"}[i];
     case PG_MIX:
@@ -832,18 +866,54 @@ static void prog_text(char *o)                  /* "Am F C G" */
     }
 }
 static uint8_t sng_fresh_empty;                 /* (XENOISE) the next NEWSONG an empty one (OCT+ a tap on SAV) */
+static void xu_undo(void)                       /* (XENOISE) UNDO: the last change back */
+{
+    uint32_t k, at = xu_at;
+    if (xu_kind == U_NONE) { toast("NOTHING TO UNDO"); return; }
+    if (xu_kind != U_CHAIN && sq_play) { toast("STOP FIRST TO UNDO"); return; }
+    switch (xu_kind) {
+    case U_SONG:
+        if (song_load(UNDO_SLOT)) { toast("NOTHING TO UNDO"); xu_kind = U_NONE; return; }
+        genre_pick = song.genre;
+        prog_sel = song.prog;
+        cur_row = 0;
+        break;
+    case U_SLOT: slot_copy(at, UNDO_SLOT); break;   /* (an empty UNDO: the slot empty again) */
+    case U_INSERT:                              /* the inserted one out again */
+        for (k = at; k + 1u < NSLOT; k++) slot_copy(k, k + 1u);
+        store_erase(NSLOT - 1u);
+        slot_ok[NSLOT - 1u] = 0;
+        slot_name[NSLOT - 1u][0] = 0;
+        break;
+    case U_OUTSERT:                             /* the one taken out back in its place */
+        for (k = NSLOT - 1u; k > at; k--) slot_copy(k, k - 1u);
+        slot_copy(at, UNDO_SLOT);
+        break;
+    default:
+        memcpy(song.chain, xu_chain, 16);
+        song.nchain = xu_nchain;
+        if (sq_chainpos >= song.nchain) sq_chainpos = 0;
+        if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
+        break;
+    }
+    xu_kind = U_NONE;
+    toast("UNDONE");
+    touch();
+}
 static void sng_do(uint32_t a)                  /* (XENOISE) SAV's actions, asked already */
 {
     char buf[40];
     arm_f = 0xFF;
     if (a == SA_SAVE) {
         if (sq_play) { toast("STOP FIRST TO SAVE"); return; }
+        xu_slot(slot_sel);                    /* (UNDO: what the slot held) */
         song.loop = 0;
         toast(song_save(slot_sel) ? "SAVE FAILED" : "SAVED");
         sng_fx = 1;
         sng_fx_ms = fm1_ms;
     } else if (a == SA_NEW) {
         int was = sq_play;
+        xu_song();                            /* (UNDO: the song before; stopped only) */
         if (genre_pick >= WB_NGENRE || sng_fresh_empty) song_empty();   /* EMPTY: the sounds of the genre it had, no notes */
         else song_new(genre_pick);
         sng_fresh_empty = 0;
@@ -859,6 +929,7 @@ static void sng_do(uint32_t a)                  /* (XENOISE) SAV's actions, aske
         toast(buf);
         touch();
     } else if (a == SA_LOAD) {
+        xu_song();
         if (song_load(slot_sel)) { toast("NOTHING TO LOAD"); return; }
         genre_pick = song.genre;
         prog_sel = song.prog;
@@ -869,6 +940,7 @@ static void sng_do(uint32_t a)                  /* (XENOISE) SAV's actions, aske
         touch();
     } else if (a == SA_DELETE) {
         if (sq_play) { toast("STOP FIRST TO DELETE"); return; }
+        xu_slot(slot_sel);
         store_erase(slot_sel);
         slot_ok[slot_sel] = 0;
         slot_name[slot_sel][0] = 0;
@@ -882,6 +954,8 @@ static void sng_do(uint32_t a)                  /* (XENOISE) SAV's actions, aske
         toast(buf);
         sng_fx = 5;
     } else if (a == SA_PASTE) {
+        if (sng_clip == slot_sel) return;
+        xu_slot(slot_sel);
         toast(slot_copy(slot_sel, sng_clip) ? "PASTE FAILED" : "PASTED");
         sng_fx = 1;
     } else if (a == SA_INSERT) {            /* the songs from here on one slot later, the copied one here */
@@ -890,10 +964,14 @@ static void sng_do(uint32_t a)                  /* (XENOISE) SAV's actions, aske
         if (src >= slot_sel) src++;
         slot_copy(slot_sel, src);
         sng_clip = (uint8_t)src;
+        xu_kind = U_INSERT;
+        xu_at = slot_sel;
         toast("INSERTED");
         sng_fx = 6;
     } else {                                /* OUTSERT: the slot gone, the songs after it one earlier */
         uint32_t k;
+        xu_slot(slot_sel);
+        xu_kind = U_OUTSERT;
         for (k = slot_sel; k + 1u < NSLOT; k++) slot_copy(k, k + 1u);
         store_erase(NSLOT - 1u);
         slot_ok[NSLOT - 1u] = 0;
@@ -912,146 +990,148 @@ static void fn_press(uint32_t i)
     char buf[40];
     switch (page) {
     case PG_ENV:
-    if (i == 1u) audition(t, env_note(t));
-    break;
-    case PG_LFO:
-    if (i == 0u) lfo_pg ^= 1u;
-    else if (i == 3u) { song.x.lfo[t].set = 0; wb_resound |= (uint8_t)(1u << t); toast("LFO: THE SOUND'S OWN"); touch(); }
-    break;
-    case PG_ARP:
-    if (i == 0u) sub ^= 1u;
-    else if (i == 1u) { wb_arp_t *a = &song.x.arp[t]; if (!a->set) { a->set = 1; a->mode = 1; a->rate = 2; a->oct = 1; a->gate = 64; a->prob = 127; } a->hold ^= 1u; touch(); }
-    else if (i == 3u) { song.x.arp[t].mode = 0; toast("ARP OFF"); touch(); }
-    break;
-    case PG_TRK:
-    if (i == 0u) { memset(&p->c[t][cur_row % plen()], 0, sizeof(cell_t)); touch(); }
-    else if (i == 1u) { cell_set(&p->c[t][cur_row % plen()], NOTE_OFF, 0, 0, 0); cur_row = (uint8_t)((cur_row + 1u) % plen()); touch(); }
-    else if (i == 2u) {
-        uint32_t L = plen(), n = L == 16u ? 32u : L == 32u ? 64u : 16u, k;
-        for (k = 0; k < NT; k++) for (r = L; r < n; r++) p->c[k][r] = p->c[k][r % L];
-        p->len = (uint8_t)n;
-        if (cur_row >= n) cur_row = 0;
-        buf[0] = 0;
-        fmt_u(str_cat(buf, "PATTERN LENGTH "), n, 0);
-        toast(buf);
-        touch();
-    } else {
-        uint32_t to, k, any;
-        for (to = 0; to < NPAT; to++) {
-            if (to == pi) continue;
-            for (k = 0, any = 0; k < NT && !any; k++) for (r = 0; r < NROW; r++) if (song.pat[to].c[k][r].n) { any = 1; break; }
-            if (!any) break;
-        }
-        if (to >= NPAT) to = (pi + 1u) % NPAT;
-        song.pat[to] = *p;
-        if (sq_play) sq_cue = (uint8_t)to;
-        else song.cur = (uint8_t)to;
-        buf[0] = 0;
-        {
-            char *e = str_cat(buf, "COPIED TO PATTERN ");
-            e[0] = (char)('1' + to);
-            e[1] = 0;
-        }
-        toast(buf);
-        touch();
-    }
-    break;
-    case PG_SND:
-    if (i == 0u) sub = (uint8_t)((sub + 1u) % snd_npages(t));
-    else if (i == 1u) audition(t, last_note[t]);
-    else if (i == 2u) {
-        uint32_t s, k, n = snd_npages(t);
-        for (s = 0; s < n; s++)
-            for (k = 0; k < 4u; k++) {
-                const pd_t *d = snd_pd(t, s, k);
-                if (d && d->rnd) pd_set(d, t, d->lo + (int32_t)rnd((uint32_t)(d->hi - d->lo) + 1u));
-            }
-        buf[0] = 0;
-        str_cat(str_cat(buf, "RANDOM "), TRK_ID[t]);
-        toast(buf);
-        touch();
-    } else {
-        track_t keep = song.trk[t];
-        track_defaults(t);
-        song.trk[t].vol = keep.vol; song.trk[t].pan = keep.pan; song.trk[t].rev = keep.rev; song.trk[t].dly = keep.dly;
-        song.trk[t].mute = keep.mute; song.trk[t].solo = keep.solo; song.trk[t].chance = keep.chance;
-        song.trk[t].mutate = keep.mutate; song.trk[t].drift = keep.drift; song.trk[t].density = keep.density;
-        toast("SOUND RESET");
-        touch();
-    }
-    break;
-    case PG_SNG:
-    if (arm_f != i || fm1_ms - arm_ms > ARM_MS) {
-        if (i == 0u && !slot_ok[slot_sel]) goto do_it;   /* (an empty slot: no question) */
-        arm_f = (uint8_t)i;
-        arm_ms = fm1_ms;
-        toast(i == 1u ? (genre_pick >= WB_NGENRE ? "AGAIN: AN EMPTY SONG" : "AGAIN: NEW SONG ON 1-8") : i == 0u ? "AGAIN: OVERWRITE SLOT" : i == 2u ? "AGAIN: LOAD THE SLOT" : "AGAIN: DELETE THE SLOT");
-        return;
-    }
-    do_it:
-    sng_do(i);
-    break;
-    case PG_CHD:
-    if (i == 0u) {
-        seed_take(pi);
-        for (t = T_BAS; t < NT; t++) fill_track(pi, t);
-        prog_text(buf);
-        toast(buf);
-        touch();
-    } else if (i == 1u) {
-        int8_t d[8];
-        uint32_t n = (const uint8_t[]){2, 4, 4, 4}[rnd(4)], k;
-        d[0] = 0;
-        for (k = 1; k < n; k++) { int8_t x; do x = (int8_t)rnd(7); while (x == d[k - 1u]); d[k] = x; }
-        prog_set(d, n, song.rows, song.scale, WB_NPROG - 1u);
-        prog_sel = WB_NPROG - 1u;
-        prog_text(buf);
-        toast(buf);
-        touch();
-    } else if (i == 2u) toast(prog_undo() ? "PROGRESSION BACK" : "NOTHING TO UNDO");
-    else hear_chord();
-    break;
-    case PG_GEN:
-    if (sub < 2u) {                         /* (XENOISE) the next song: F1 its next page, F2 GENERATE (asked), F4 AUTO */
-        if (i == 0u) sub = (uint8_t)((sub + 1u) % 3u);
-        else if (i == 1u) { if (arm_f == SA_NEW && fm1_ms - arm_ms <= ARM_MS) sng_do(SA_NEW); else ngen_ask(); }
-        else if (i == 3u) { ng_prog = ng_cspace = ng_mspace = ng_bpm = ng_key = ng_form = ng_bass = 0; toast("ALL AUTO"); }
+        if (i == 1u) audition(t, env_note(t));
         break;
-    }
-    if (i == 0u) { seed_take(pi); fill_track(pi, t); buf[0] = 0; str_cat(str_cat(buf, "FILLED "), TRK_ID[t]); toast(buf); }
-    else if (i == 1u) { seed_take(pi); mutate_track(pi, t, 60); buf[0] = 0; str_cat(str_cat(buf, "MUTATED "), TRK_ID[t]); toast(buf); }
-    else if (i == 2u) {
-        if (seed_of != pi) { toast("NOTHING TO RESTORE"); return; }
-        *p = seed_pat;
-        seed_of = 0xFF;
-        toast("PATTERN RESTORED");
-    } else { seed_take(pi); gen_pattern(pi, sect_v(pi)); toast("NEW PATTERN - RESTORE UNDOES"); }
-    touch();
-    break;
-    case PG_MIX:
-    if (i == 0u) song.trk[t].mute ^= 1u;
-    else if (i == 1u) song.trk[t].solo ^= 1u;
-    else if (i == 2u) { for (r = 0; r < NT; r++) song.trk[r].mute = song.trk[r].solo = 0; }
-    else { seed_take(pi); memset(p->c[t], 0, sizeof p->c[t]); toast("TRACK CLEARED - RESTORE ON GEN"); }
-    touch();
-    break;
-    case PG_MST:
-    if (i == 0u) sub = (uint8_t)((sub + 1u) % MST_NSUB);
-    else if (i == 1u) {
-        if (ntap && fm1_ms - taps[(ntap - 1u) % 4u] > 2500u) ntap = 0;
-        taps[ntap % 4u] = fm1_ms;
-        ntap++;
-        if (ntap >= 3u) {
-            uint32_t n = ntap > 4u ? 4u : ntap, d = (fm1_ms - taps[(ntap - n) % 4u]) / (n - 1u);
-            if (d) song.bpm = (uint8_t)clampi((int32_t)(60000u / d), 50, 200);
+    case PG_LFO:
+        if (i == 0u) lfo_pg ^= 1u;
+        else if (i == 3u) { song.x.lfo[t].set = 0; wb_resound |= (uint8_t)(1u << t); toast("LFO: THE SOUND'S OWN"); touch(); }
+        break;
+    case PG_ARP:
+        if (i == 0u) sub ^= 1u;
+        else if (i == 1u) { wb_arp_t *a = &song.x.arp[t]; if (!a->set) { a->set = 1; a->mode = 1; a->rate = 2; a->oct = 1; a->gate = 64; a->prob = 127; } a->hold ^= 1u; touch(); }
+        else if (i == 3u) { song.x.arp[t].mode = 0; toast("ARP OFF"); touch(); }
+        break;
+    case PG_TRK:
+        if (i == 0u) { memset(&p->c[t][cur_row % plen()], 0, sizeof(cell_t)); touch(); }
+        else if (i == 1u) { cell_set(&p->c[t][cur_row % plen()], NOTE_OFF, 0, 0, 0); cur_row = (uint8_t)((cur_row + 1u) % plen()); touch(); }
+        else if (i == 2u) {
+            uint32_t L = plen(), n = L == 16u ? 32u : L == 32u ? 64u : 16u, k;
+            for (k = 0; k < NT; k++) for (r = L; r < n; r++) p->c[k][r] = p->c[k][r % L];
+            p->len = (uint8_t)n;
+            if (cur_row >= n) cur_row = 0;
+            buf[0] = 0;
+            fmt_u(str_cat(buf, "PATTERN LENGTH "), n, 0);
+            toast(buf);
+            touch();
+        } else {
+            uint32_t to, k, any;
+            for (to = 0; to < NPAT; to++) {
+                if (to == pi) continue;
+                for (k = 0, any = 0; k < NT && !any; k++) for (r = 0; r < NROW; r++) if (song.pat[to].c[k][r].n) { any = 1; break; }
+                if (!any) break;
+            }
+            if (to >= NPAT) to = (pi + 1u) % NPAT;
+            song.pat[to] = *p;
+            if (sq_play) sq_cue = (uint8_t)to;
+            else song.cur = (uint8_t)to;
+            buf[0] = 0;
+            {
+                char *e = str_cat(buf, "COPIED TO PATTERN ");
+                e[0] = (char)('1' + to);
+                e[1] = 0;
+            }
+            toast(buf);
             touch();
         }
-        buf[0] = 0;
-        fmt_u(str_cat(buf, "TAP "), ntap, 0);
-        toast(buf);
-    } else if (i == 2u) sit_set(!sit_on);
-    else { seed_take(pi); for (t = 0; t < NT; t++) memset(p->c[t], 0, sizeof p->c[t]); toast("PATTERN CLEARED - RESTORE ON GEN"); touch(); }
-    break;
+        break;
+    case PG_SND:
+        if (i == 0u) sub = (uint8_t)((sub + 1u) % snd_npages(t));
+        else if (i == 1u) audition(t, last_note[t]);
+        else if (i == 2u) {
+            uint32_t s, k, n = snd_npages(t);
+            for (s = 0; s < n; s++)
+                for (k = 0; k < 4u; k++) {
+                    const pd_t *d = snd_pd(t, s, k);
+                    if (d && d->rnd) pd_set(d, t, d->lo + (int32_t)rnd((uint32_t)(d->hi - d->lo) + 1u));
+                }
+            buf[0] = 0;
+            str_cat(str_cat(buf, "RANDOM "), TRK_ID[t]);
+            toast(buf);
+            touch();
+        } else {
+            track_t keep = song.trk[t];
+            track_defaults(t);
+            song.trk[t].vol = keep.vol; song.trk[t].pan = keep.pan; song.trk[t].rev = keep.rev; song.trk[t].dly = keep.dly;
+            song.trk[t].mute = keep.mute; song.trk[t].solo = keep.solo; song.trk[t].chance = keep.chance;
+            song.trk[t].mutate = keep.mutate; song.trk[t].drift = keep.drift; song.trk[t].density = keep.density;
+            toast("SOUND RESET");
+            touch();
+        }
+        break;
+    case PG_SNG:
+        if (sub & 1u) { if (i == 0u) xu_undo(); break; }   /* (XENOISE: page 2, F1 UNDO) */
+        if (arm_f != i || fm1_ms - arm_ms > ARM_MS) {
+            if (i == 0u && !slot_ok[slot_sel]) goto do_it;   /* (an empty slot: no question) */
+            arm_f = (uint8_t)i;
+            arm_ms = fm1_ms;
+            toast(i == 1u ? (genre_pick >= WB_NGENRE ? "AGAIN: AN EMPTY SONG" : "AGAIN: NEW SONG ON 1-8") : i == 0u ? "AGAIN: OVERWRITE SLOT" : i == 2u ? "AGAIN: LOAD THE SLOT" : "AGAIN: DELETE THE SLOT");
+            return;
+        }
+    do_it:
+        sng_do(i);
+        break;
+    case PG_CHD:
+        if (i == 0u) {
+            seed_take(pi);
+            for (t = T_BAS; t < NT; t++) fill_track(pi, t);
+            prog_text(buf);
+            toast(buf);
+            touch();
+        } else if (i == 1u) {
+            int8_t d[8];
+            uint32_t n = (const uint8_t[]){2, 4, 4, 4}[rnd(4)], k;
+            d[0] = 0;
+            for (k = 1; k < n; k++) { int8_t x; do x = (int8_t)rnd(7); while (x == d[k - 1u]); d[k] = x; }
+            prog_set(d, n, song.rows, song.scale, WB_NPROG - 1u);
+            prog_sel = WB_NPROG - 1u;
+            prog_text(buf);
+            toast(buf);
+            touch();
+        } else if (i == 2u) toast(prog_undo() ? "PROGRESSION BACK" : "NOTHING TO UNDO");
+        else hear_chord();
+        break;
+    case PG_GEN:
+        if (sub < 2u) {                         /* (XENOISE) the next song: F1 its next page, F2 GENERATE (asked), F4 AUTO */
+            if (i == 0u) sub = (uint8_t)((sub + 1u) % 3u);
+            else if (i == 1u) { if (arm_f == SA_NEW && fm1_ms - arm_ms <= ARM_MS) sng_do(SA_NEW); else ngen_ask(); }
+            else if (i == 2u) xu_undo();
+            else if (i == 3u) { ng_prog = ng_cspace = ng_mspace = ng_bpm = ng_key = ng_form = ng_bass = 0; toast("ALL AUTO"); }
+            break;
+        }
+        if (i == 0u) { seed_take(pi); fill_track(pi, t); buf[0] = 0; str_cat(str_cat(buf, "FILLED "), TRK_ID[t]); toast(buf); }
+        else if (i == 1u) { seed_take(pi); mutate_track(pi, t, 60); buf[0] = 0; str_cat(str_cat(buf, "MUTATED "), TRK_ID[t]); toast(buf); }
+        else if (i == 2u) {
+            if (seed_of != pi) { toast("NOTHING TO RESTORE"); return; }
+            *p = seed_pat;
+            seed_of = 0xFF;
+            toast("PATTERN RESTORED");
+        } else { seed_take(pi); gen_pattern(pi, sect_v(pi)); toast("NEW PATTERN - RESTORE UNDOES"); }
+        touch();
+        break;
+    case PG_MIX:
+        if (i == 0u) song.trk[t].mute ^= 1u;
+        else if (i == 1u) song.trk[t].solo ^= 1u;
+        else if (i == 2u) { for (r = 0; r < NT; r++) song.trk[r].mute = song.trk[r].solo = 0; }
+        else { seed_take(pi); memset(p->c[t], 0, sizeof p->c[t]); toast("TRACK CLEARED - RESTORE ON GEN"); }
+        touch();
+        break;
+    case PG_MST:
+        if (i == 0u) sub = (uint8_t)((sub + 1u) % MST_NSUB);
+        else if (i == 1u) {
+            if (ntap && fm1_ms - taps[(ntap - 1u) % 4u] > 2500u) ntap = 0;
+            taps[ntap % 4u] = fm1_ms;
+            ntap++;
+            if (ntap >= 3u) {
+                uint32_t n = ntap > 4u ? 4u : ntap, d = (fm1_ms - taps[(ntap - n) % 4u]) / (n - 1u);
+                if (d) song.bpm = (uint8_t)clampi((int32_t)(60000u / d), 50, 200);
+                touch();
+            }
+            buf[0] = 0;
+            fmt_u(str_cat(buf, "TAP "), ntap, 0);
+            toast(buf);
+        } else if (i == 2u) sit_set(!sit_on);
+        else { seed_take(pi); for (t = 0; t < NT; t++) memset(p->c[t], 0, sizeof p->c[t]); toast("PATTERN CLEARED - RESTORE ON GEN"); touch(); }
+        break;
     }
 }
 
@@ -1144,6 +1224,7 @@ static void arr_do(uint32_t i)                  /* (XENOISE) SEQ's K1..K4, asked
     arm_f = 0xFF;
     if (i == 0u) { arr_clip = song.chain[at]; toast("COPIED"); return; }
     if (arr_clip == 0xFF && i != 3u) return;
+    xu_chain_take();
     if (i == 1u) { song.chain[at] = arr_clip; toast("PASTED"); }
     else if (i == 2u) {                         /* INSERT: the copy at the slot, the rest moved on */
         if (n >= 16u) return;
@@ -1241,6 +1322,8 @@ static void arr_fn(uint32_t i)
 {
     uint32_t k, n = song.nchain;
     (void)k; (void)n;
+    if (i == 3u) { xu_undo(); return; }         /* (XENOISE) UNDO */
+    if (i != 1u) xu_chain_take();
     if (i == 0u) {                              /* (XENOISE) FORM: the next of the forms */
         int f = form_of();
         char buf[24];
@@ -1251,7 +1334,6 @@ static void arr_fn(uint32_t i)
         str_cat(str_cat(buf, "FORM: "), FORM_NAME[form_of() < 0 ? 0 : form_of()]);
         toast(buf);
     } else if (i == 1u) { song.loop ^= 1u; toast(song.loop ? "LOOP THE PATTERN" : "PLAY THE SEQUENCE"); }
-    else if (i == 3u) return;
     else {                                      /* (XENOISE) SHUFFLE: another form (a part goes on with a white key) */
         char buf[24];
         form_shuffle();
@@ -1292,7 +1374,8 @@ static void ui_input(void)
         if (i != PG_ARR && i != PG_SNG && (b & (1u << PG_BTN[i]))) {
             if (fx_latch) { fx_latch = 0; punches_off(); fx_reset(); }   /* (XENOISE: a page closes PERFORM) */
             if (tab_of(page) == i) {            /* (XENOISE) a tab's button again: */
-                if (i == PG_SND) sub = (uint8_t)((sub + 1u) % snd_npages(t));
+                if (i == PG_ENV) sub = (uint8_t)((sub + 1u) % env_npages(t));   /* ENV: its page 2 */
+                else if (i == PG_SND) sub = (uint8_t)((sub + 1u) % snd_npages(t));
                 else if (i == PG_MST) page_go(page == PG_MST ? PG_MIX : PG_MST);   /* GLO: the mixer, the settings */
                 else if (i == PG_LFO) lfo_pg ^= 1u;   /* LFO: its page 2 */
             } else page_go(i);
@@ -1327,8 +1410,19 @@ static void ui_input(void)
         if (vis_arp_held && !vis_ar && fm1_ms - arp_rel_ms >= 450u) { vis_arp_held = 0; vis_ar = 1; vis_ar_ms = fm1_ms; vis_yaw = 0; }
         if ((b & (1u << BTN_HOME)) && vis_ar == 2u) { vis_ar = 3; vis_ar_ms = fm1_ms; home_used = 1; }
         b &= ~(1u << BTN_ARP);
+        arp_used = 1;
     }
-    if (b & (1u << BTN_ARP)) {                  /* (XENOISE) ARP: its page (the track's arp on JIANT's), again its second */
+    /* (XENOISE) ARP: a tap its page (the track's arp on JIANT's), again its second; held on HOM, NOTE REPEAT on, off (a pad
+     * repeats at the arp's rate while it plays) */
+    if (b & (1u << BTN_ARP)) { arp_down_ms = fm1_ms; arp_used = 0; }
+    if ((held & (1u << BTN_ARP)) && !arp_used && page == PG_TRK && fm1_ms - arp_down_ms >= 450u) {
+        arp_used = 1;
+        arp_latch ^= 1u;
+        rpt_held = 0;
+        toast(arp_latch ? "NOTE REPEAT ON (HOLD ARP: OFF)" : "NOTE REPEAT OFF");
+    }
+    if ((rel & (1u << BTN_ARP)) && !arp_used) {
+        arp_used = 1;
         if (fx_latch) { fx_latch = 0; punches_off(); fx_reset(); }
         if (page != PG_ARP) page_go(PG_ARP);
         else sub ^= 1u;
@@ -1340,6 +1434,7 @@ static void ui_input(void)
         else sq_req = 1;
     }
     if (b & (1u << BTN_REC)) { rec_on ^= 1u; toast(rec_on ? "REC - PADS WRITE NOTES" : "REC OFF"); }
+    if ((b & (1u << BTN_OCT_DOWN)) && (held & (1u << BTN_SEQ))) { seq_used = 1; xu_undo(); b &= ~(1u << BTN_OCT_DOWN); }   /* (XENOISE) SEQ held + OCT-: UNDO (the page stays) */
     if (b & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
         int up = (b >> BTN_OCT_UP) & 1u;
         if (page == PG_SNG) {                   /* (XENOISE) OCT+: yes; a tap a new empty song, four a generated one. */
@@ -1394,6 +1489,7 @@ static void ui_input(void)
             } else if (up) {
                 if (n >= 16u) toast("16 SLOTS AT MOST");
                 else {
+                    xu_chain_take();
                     for (q = 0; q < NPAT; q++) { for (k2 = 0; k2 < n && song.chain[k2] != q; k2++) {} if (k2 == n) break; }
                     song.chain[n] = (uint8_t)(q < NPAT ? q : song.chain[arr_pos < n ? arr_pos : n - 1u]);
                     song.nchain++;
@@ -1402,6 +1498,7 @@ static void ui_input(void)
                     touch();
                 }
             } else if (n > 1u) {
+                xu_chain_take();
                 song.nchain--;
                 if (sq_chainpos >= song.nchain) sq_chainpos = 0;
                 if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
@@ -2252,7 +2349,7 @@ static void draw_info(void)
     if (toast_ms && fm1_ms - toast_ms < 1800u) { g_text(5, info_y + 2, toast_s, C_ORANGE, T_CROP); return; }
     if (fx_on()) hint = "WHITE: PUNCH  BLACK: TRACKS";
     else if ((fm1_in.buttons >> BTN_SEQ) & 1u) hint = "WHITE 1-8: PATTERN  9: LOOP";
-    else if (arp_on()) hint = "TAP A PAD: REPEAT  ARP: OFF";
+    else if (arp_on()) hint = "PADS REPEAT  HOLD ARP: OFF";
     if (hint) { g_text(5, info_y + 2, hint, C_CYAN, T_CROP); return; }
     s[0] = 0;
     str_cat(s, page == PG_TRK ? (!hom_edit ? "HOME: NOTE VEL FX AMT" : !jam_nav() ? "HOME+BLACK: TRACK, F" : PG_HINT[page])
@@ -2268,7 +2365,7 @@ static void draw_info(void)
     g_text(236 - g_text_w(s), info_y + 2, s, C_CYAN, T_CROP | T_BOLD);
 }
 static const char *perf_fn(uint32_t i) { return (const char *const[]){perf_solo ? "SOLO" : "MUTE", "", sit_on ? "SIT OFF" : "SIT", "ALL ON"}[i]; }
-static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"FORM", song.loop ? "SEQ" : "LOOP", "SHUFFLE", ""}[i]; }
+static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"FORM", song.loop ? "SEQ" : "LOOP", "SHUFFLE", "UNDO"}[i]; }
 static void knob_badge(int32_t x, int32_t y, uint32_t i)   /* (XENOISE) the knob's number in a disc of its colour (12 px) */
 {
     static const uint8_t HW[12] = {3, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5, 3};   /* the disc's half widths, a row each */
