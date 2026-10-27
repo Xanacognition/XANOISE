@@ -1527,7 +1527,7 @@ static void ui_input(void)
      * knob on pages with no tracks), SELECT turns what PRESETS used to (the pattern; the knob ALGORITHM is on), K1..K4
      * the page's knobs, the page's button again its next page */
     if ((d = fm1_enc_take(ENC_PRESETS)) != 0) {
-        if (vis_on && vis_ar) { if (vis_ar == 2u) vis_yaw = (uint16_t)(vis_yaw - (uint32_t)(d < 0 ? -d : d) * 0x400u); }   /* (ALL RANGE: look left) */
+        if (vis_on && vis_ar) { if (vis_ar == 2u) vis_yaw = (uint16_t)((int32_t)vis_yaw + d * 0x400); }   /* (ALL RANGE: it turns, left or right) */
         else if (fx_on()) { fx_row = (uint8_t)clampi((int32_t)fx_row + d, 0, 1); fx_col = (uint8_t)clampi(fx_col, 0, fx_row ? NT - 1 : NPUNCH - 1); }   /* (PERFORM: the punch-ins, the tracks) */
         else if (page == PG_GEN && sub < 2u) { char lab[16], val[24]; uint8_t s0 = sub; sub = 0; ngen_knob(0, d, lab, val); sub = s0; }
         else if (page == PG_SNG) slot_sel = (uint8_t)clampi((int32_t)slot_sel + d, 1, NSLOT - 1);
@@ -1538,7 +1538,7 @@ static void ui_input(void)
         else cur_row = (uint8_t)(((int32_t)cur_row + d % (int32_t)plen() + (int32_t)plen()) % (int32_t)plen());
     }
     if ((d = fm1_enc_take(ENC_ALGORITHM)) != 0) {   /* (XENOISE) the tracks, BRK .. SYN (no wrap); HOM: past SYN the visualizer */
-        if (vis_on && vis_ar && page == PG_TRK) { if (vis_ar == 2u) vis_yaw = (uint16_t)(vis_yaw + (uint32_t)(d < 0 ? -d : d) * 0x400u); }   /* (ALL RANGE: look right) */
+        if (vis_on && vis_ar && page == PG_TRK) { if (vis_ar == 2u) vis_yaw = (uint16_t)((int32_t)vis_yaw + d * 0x400); }   /* (ALL RANGE: as PRESETS) */
         else if (fx_on()) fx_col = (uint8_t)clampi((int32_t)fx_col + d, 0, fx_row ? NT - 1 : NPUNCH - 1);   /* (PERFORM: along the row) */
         else if (page == PG_MST || page == PG_SNG || (page == PG_GEN && sub < 2u)) {   /* (XENOISE) the knob (SELECT turns it) */
             char lab[16], val[24];
@@ -2448,7 +2448,7 @@ static void draw_help(void)
         {"MIX  THE MASTER", "ALGO  TRACK", "SELECT  MASTER VOLUME", "K1-K4  VOL PAN VERB DELAY", "GLO AGAIN  SETTINGS", "", ""},
         {"ARP  THE TRACK'S ARP", "ALGO  TRACK", "K1-K4  MODE RATE OCT GATE", "ARP AGAIN  PAGE 2", "F2 HOLD  F4 OFF", "", ""},
         {"FX  PERFORM", "PRESETS  ROW: FX, TRACKS", "ALGO  ALONG IT", "SELECT  ON, OFF", "K FILTER CHOP STEP WASH", "WHITE KEYS FX  BLACK MUTE", "FX AGAIN  CLOSE"},
-        {"VIS  THE VISUALIZER", "PLAY  ENGAGE", "HOLD ARP  ALL RANGE", "PRESETS  LOOK LEFT", "ALGO  LOOK RIGHT", "HOME  DISENGAGE", "ALGO LEFT  THE TRACKER"}};
+        {"VIS  THE VISUALIZER", "PLAY  ENGAGE", "HOLD ARP  ALL RANGE", "PRESETS  TURN (L / R)", "ALGO  TURN (L / R)", "HOME  DISENGAGE", "ALGO LEFT  THE TRACKER"}};
     uint32_t k, w = fx_on() ? 11u : page == PG_TRK && vis_on ? 12u : page < PG_ALL ? page : 0u;
     int32_t y = TOP_H + 8;
     g_rect(6, TOP_H + 4, 228, 170, C_BG);
@@ -2457,17 +2457,26 @@ static void draw_help(void)
     g_text(86, y, H[w][0], C_ORANGE, T_CROP | T_BOLD);
     for (k = 1; k < 7u; k++) if (H[w][k][0]) g_text(14, y + 6 + (int32_t)k * 20, H[w][k], k & 1u ? C_TXT : g_mix(C_BG, C_TXT, 200), T_CROP);
 }
+static uint32_t ui_t0;                          /* (XENOISE) the first frame: the tracker fades up from the intro's ground */
+static void draw_fadein(void)
+{
+    uint32_t e;
+    if (!ui_t0) ui_t0 = fm1_ms ? fm1_ms : 1u;
+    e = fm1_ms - ui_t0;
+    if (e < 420u) g_blend(0, 0, 240, 240, C_BG, 256u - e * 256u / 420u);
+}
 static void draw_all(void)
 {
     g_rect(0, 0, 240, 240, C_BG);
     draw_top();
-    if (!fx_on() && page == PG_TRK && vis_on) { vis_draw(); if (help_on()) draw_help(); return; }
+    if (!fx_on() && page == PG_TRK && vis_on) { vis_draw(); if (help_on()) draw_help(); draw_fadein(); return; }
     if (!fx_on() && page == PG_TRK && !hom_edit) {   /* (XENOISE) HOM plain: the grid, the info line, no knobs */
         draw_grid();
         info_y = 222;
         draw_info();
         info_y = INFO_Y;
         if (help_on()) draw_help();
+        draw_fadein();
         return;
     }
     if (fx_on()) draw_perform();
@@ -2503,6 +2512,7 @@ static void draw_all(void)
     draw_info();
     draw_knobs();
     if (help_on()) draw_help();
+    draw_fadein();
 }
 
 /* ================================================================ the main loop */

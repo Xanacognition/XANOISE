@@ -183,6 +183,18 @@ static void xs_splash(uint32_t ms)
         cv_oy = -(int32_t)h * 120;
         xs_scene(ms);
         cv_oy = 0;
+        if (ms > XS_END) {                       /* (the hold: it all dissolves into the theme's ground; the tracker then
+                                                  * comes up out of it, wb_ui.c draw_all) */
+            uint32_t k = (ms - XS_END) * 256u / 280u, i, b = XS_BG, br = b >> 11, bg = (b >> 5) & 63u, bb = b & 31u;
+            if (k > 256u) k = 256u;
+            for (i = 0; i < 240u * 120u; i++) {
+                uint32_t c = swap16(cv_px[i]), r = c >> 11, g = (c >> 5) & 63u, bl = c & 31u;
+                r = (r * (256u - k) + br * k) >> 8;
+                g = (g * (256u - k) + bg * k) >> 8;
+                bl = (bl * (256u - k) + bb * k) >> 8;
+                cv_px[i] = swap16(r << 11 | g << 5 | bl);
+            }
+        }
         cv_blit(0, h * 120u);
     }
     lcd_sync();

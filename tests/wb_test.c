@@ -110,8 +110,10 @@ int main(void)
         check("  then ALL RANGE", vis_ar == 2u);
         web_enc(EN_ALGO, 4); run_ms(60);
         check("  ALGORITHM: it looks right", vis_yaw == 0x1000u);
-        web_enc(EN_PRESET, 2); run_ms(60);
-        check("  PRESETS: it looks left", vis_yaw == 0x0800u);
+        web_enc(EN_PRESET, -2); run_ms(60);
+        check("  PRESETS left: it turns back left", vis_yaw == 0x0800u);
+        web_enc(EN_PRESET, 1); web_enc(EN_ALGO, -1); run_ms(60);
+        check("  either knob, either way", vis_yaw == 0x0800u);
         run_ms(3000);
         printf("wb:   ALL RANGE, 3 s: wave %u, kills %u, shield %d\n", vis_wave, vis_kills, vis_shield);
         tap(B_HOME);

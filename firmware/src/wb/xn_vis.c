@@ -9,7 +9,7 @@
  * The ground runs at the tempo. What reaches the mech takes its shield (red at the edges); it comes back by itself.
  * The state: a few small arrays, stepped once a frame (vis_step, the main loop); drawn band by band (vis_draw, the
  * same every band: nothing random in it). World units: 1/16 m; the view: x right, h up, z ahead.
- * ALL RANGE (ARP held on it): the mech stops and turns; PRESETS looks left, ALGORITHM right; what comes, comes from all
+ * ALL RANGE (ARP held on it): the mech stops and turns; PRESETS or ALGORITHM turns it (left, right); what comes, comes from all
  * round. HOME: it disengages and goes home. Each way a boot screen plays first, as the intro's. */
 
 #define VIS_Y0 TOP_H                            /* the view: from under the tabs to the screen's foot */
