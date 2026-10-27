@@ -62,6 +62,9 @@ progress { width: 100%; height: 6px; accent-color: var(--play); }
 .note { font-size: .9rem; color: var(--dim); }
 .warn { border-left: 3px solid var(--hot); padding-left: 12px; }
 .ask { border: 1px solid var(--chord); padding: 12px; display: grid; gap: 10px; }
+.pre { display: grid; gap: 8px; }
+.pre label { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; align-items: start; cursor: pointer; }
+.pre input { width: 18px; height: 18px; margin: 2px 0 0; }
 .file { font: 14px var(--body); color: var(--dim); }
 select { font: 15px var(--body); background: var(--ground); color: var(--text); border: 1px solid var(--seam); padding: 8px; max-width: 100%; }
 
@@ -124,11 +127,20 @@ footer { border-top: 1px solid var(--seam); padding-block: 32px 0; display: grid
         <label class="file" for="inst-file">Or install a .fwsc file you downloaded:<br><input id="inst-file" type="file" accept=".fwsc"></label>
         <div class="ask" id="inst-ask" hidden>
           <p id="inst-ask-text"></p>
+          <div class="pre" id="inst-pre" hidden>
+            <p class="label">Before it writes</p>
+            <p id="inst-batt" class="note"></p>
+            <label><input type="checkbox" class="pre-c" id="pre-batt"> The FM-1 is charged (it writes on its own battery, even on USB)</label>
+            <label><input type="checkbox" class="pre-c" id="pre-cable"> Short data cable, straight into a port on the computer, no hub</label>
+            <label><input type="checkbox" class="pre-c" id="pre-sleep"> The computer won't sleep for the next five minutes</label>
+            <label><input type="checkbox" class="pre-c" id="pre-apps"> Renoise, DAWs, the M-VAVE app and other MIDI programs are closed</label>
+            <label id="pre-low-row" hidden><input type="checkbox" class="pre-c" id="pre-low"> The battery reads low: I've charged it and want to install anyway</label>
+          </div>
           <div class="go"><button class="btn" id="inst-yes" type="button">Install it</button><button class="btn ghost" id="inst-no" type="button">Cancel</button></div>
         </div>
         <progress id="inst-bar" max="100" value="0"></progress>
         <div class="status" id="inst-status" role="status">Loading the firmware…</div>
-        <p class="note warn">Don't unplug the cable while it writes. If it stops, plug it back in and press Install again: it carries on where it stopped.</p>
+        <p class="note warn">Don't unplug the cable while it writes. If it stops, leave the FM-1 switched on, plug the cable back in and press Install again: it carries on where it stopped. Builds from November 2026 on also check themselves at every start: one left half-written goes to the chip's USB boot mode (WL82 UBOOT1.00), where <a href="https://github.com/Quixotic7/MvaveFM1Unbricker" target="_blank" rel="noopener">MvaveFM1Unbricker</a> can write it again over a plain USB cable.</p>
         <details><summary class="label">Log</summary><pre class="log" id="inst-log"></pre></details>
       </div>
       <div id="inst-away" hidden>
@@ -301,7 +313,7 @@ const MSG = {
   denied: "MIDI access was refused. Allow MIDI devices for this site (the icon left of the address), reload and press Install again.",
   blocked: "MIDI is blocked for this site. Allow MIDI devices in the site settings, reload and press Install again.",
   midifail: "The browser couldn't start MIDI. Close other MIDI programs, replug the FM-1 and reload.",
-  notfound: "No FM-1 answered. Switch it on, use a data cable straight to the computer, and close the M-VAVE app and DAWs.",
+  notfound: "No FM-1 answered. Switch it on, use a data cable straight to the computer, and close the M-VAVE app and DAWs. On Windows, if no program sees it at all: Device Manager > View > Show hidden devices, uninstall the greyed-out FM-1 / Felucca / JIANT entries, restart the computer and plug it into a back port.",
   busy: "Another program is using the FM-1's MIDI port: ", noanswer: "The FM-1's port is there but doesn't answer: ",
   noupdate: "The FM-1 didn't start the update. Nothing was written. Stop playback, switch it off and on, and try again.",
   model: "The connected device isn't an FM-1. ", lost: "The USB connection dropped. Replug it and press Install again.",
@@ -356,9 +368,45 @@ const ui = {
   save: () => {},
   openStock: () => {},
 };
-function ask(text) {                             // an in-page question (the viewer's frame shows no confirm())
-  return new Promise((res) => { $("inst-ask-text").textContent = text; $("inst-ask").hidden = false; pending = res; });
+function ask(text, pre = false) {                // an in-page question (the viewer's frame shows no confirm())
+  return new Promise((res) => {
+    $("inst-ask-text").textContent = text; $("inst-pre").hidden = !pre; $("inst-ask").hidden = false; pending = res;
+    if (pre) document.querySelectorAll(".pre-c").forEach((c) => { c.checked = false; });
+    preCheck();
+  });
 }
+function preCheck() {                            // (XENOISE) Install it: only with every box of the checklist ticked
+  const boxes = [...document.querySelectorAll(".pre-c")].filter((c) => !c.closest("[hidden]"));
+  $("inst-yes").disabled = !$("inst-pre").hidden && boxes.some((c) => !c.checked);
+}
+document.querySelectorAll(".pre-c").forEach((c) => c.addEventListener("change", preCheck));
+/* (XENOISE) 98 XN_STAT: the battery as the FM-1 reads it, from a XENOISE build that answers (older ones and other
+ * firmware don't: null). [raw lo, raw hi, level 0..3, USB power, self-check] */
+async function fmStat(midi) {
+  const outs = [...midi.outputs.values()];
+  for (const input of midi.inputs.values()) {
+    if (!PORT_RE.test(input.name || "")) continue;
+    const output = pairOutput(input, outs);
+    if (!output) continue;
+    try { await input.open(); await output.open(); } catch (_) { continue; }
+    const c = new BackupConnection(input, output);
+    try {
+      const a = await c.request([98, []], { timeout: 700, retries: 1 });
+      if (a.length >= 5) return { raw: a[0] | a[1] << 7, level: a[2], usb: !!a[3], selfcheck: !!a[4] };
+    } catch (e) { log(`stat: ${input.name}: ${e.message}`); }
+    finally { c.close && c.close(); }
+  }
+  return null;
+}
+let wake = null;                                 // the screen kept on while it writes (a sleeping computer drops USB)
+async function keepAwake(on) {
+  try {
+    if (on && navigator.wakeLock && !wake) wake = await navigator.wakeLock.request("screen");
+    if (!on && wake) { await wake.release(); wake = null; }
+  } catch (e) { log(`wake lock: ${e.message}`); }
+}
+document.addEventListener("visibilitychange", () => { if (writing && document.visibilityState === "visible") keepAwake(true); });
+window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = ""; } });
 $("inst-yes").addEventListener("click", () => { $("inst-ask").hidden = true; if (pending) pending(true); pending = null; });
 $("inst-no").addEventListener("click", () => { $("inst-ask").hidden = true; if (pending) pending(false); pending = null; });
 /* ---------------------------------------------------------------- export: the songs off the FM-1 */
@@ -531,10 +579,16 @@ if (inArtifact) { $("ex-connect").disabled = true; exSay("Exporting from the FM-
 
 $("inst-go").addEventListener("click", async () => {
   if (writing || !image) return;
-  if (!(await ask(`Write ${product} to the FM-1? Keep the cable in until it says Done.`))) return;
+  let midi = null, st = null;
+  try { midi = await midiAccess(navigator, log); st = await fmStat(midi); } catch (e) { log(`stat: ${e.message}`); }
+  $("inst-batt").textContent = st ? `Battery: ${["empty", "low", "half", "full"][st.level] || st.level} (level ${st.level} of 3, reading ${st.raw})${st.usb ? ", on USB power" : ""}.`
+    : "This FM-1 doesn't report its battery (official firmware, or an older XENOISE): check it on the FM-1's screen.";
+  $("pre-low-row").hidden = !(st && st.level < 2);
+  if (!(await ask(`Write ${product} to the FM-1? Keep the cable in until it says Done.`, true))) return;
   writing = true; $("inst-go").disabled = true; $("inst-file").disabled = true;
+  await keepAwake(true);
   try {
-    const midi = await midiAccess(navigator, log);
+    if (!midi) midi = await midiAccess(navigator, log);
     const up = new Updater(midi, log, { refresh: () => navigator.requestMIDIAccess({ sysex: true }) });
     await runInstall({ up, image, product, ui, state: {} });
     say(MSG.done); $("inst-bar").value = 100;
@@ -544,5 +598,6 @@ $("inst-go").addEventListener("click", async () => {
     log(`error ${code}: ${e && e.message}`);
   }
   writing = false; $("inst-go").disabled = !image; $("inst-file").disabled = false;
+  keepAwake(false);
 });
 </script>

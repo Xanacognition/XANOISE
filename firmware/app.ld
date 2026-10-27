@@ -28,7 +28,8 @@ MEMORY
 SECTIONS
 {
     /* (0.9.12) what an interrupt reaches first, in name order (tools/build.py audio_sections): the UI cannot move it */
-    .text : { KEEP(*(.text.crt0)) *(SORT_BY_NAME(.text.a.*)) *(SORT_BY_NAME(.rodata.a.*)) *(.text*) *(.rodata*)
+    /* (XENOISE) the image's self-check and its record right after crt0, in the first flash sector (hal/fm1_bootcheck.h) */
+    .text : { KEEP(*(.text.crt0)) KEEP(*(.text.crt1)) KEEP(*(.rodata.crt1)) *(SORT_BY_NAME(.text.a.*)) *(SORT_BY_NAME(.rodata.a.*)) *(.text*) *(.rodata*)
               . = ALIGN(4); _etext = .; } > XIP
     .ram_text : { _rt_start = .; KEEP(*(.ram_text*)) . = ALIGN(4); _rt_end = .; } > RAMTEXT AT > XIP
     _rt_load = LOADADDR(.ram_text);

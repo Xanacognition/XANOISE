@@ -23,6 +23,7 @@ _start:
 	[r3 + 0x30] = r1
 	sp = _ustack_top
 	ssp = _sstack_top
+	call fm1_boot_check	/* (XENOISE) the image's self-check (hal/fm1_bootcheck.h): a damaged one goes to UBOOT */
 	call fm1_cstart
 	goto .
 

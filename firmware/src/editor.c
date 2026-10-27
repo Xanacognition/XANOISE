@@ -22,7 +22,7 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_MOTION = 64, ED_BACKUP_LIST, ED_BACKUP_GET, ED_BACKUP_PUT };                              /* v6: song chain */
 
 #if defined(XN_WB) && XN_WB
-static int xn_ed_handle(uint32_t cmd, const uint8_t *a, uint32_t na);   /* (XENOISE) the Dock's EXPORT: 96 XN_LIST, 97 XN_GET */
+static int xn_ed_handle(uint32_t cmd, const uint8_t *a, uint32_t na);   /* (XENOISE) the Dock's EXPORT: 96 XN_LIST, 97 XN_GET (98 XN_STAT below) */
 #endif
 static uint8_t ed_out[600];
 static uint32_t ed_n;
@@ -393,6 +393,17 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
 #if defined(XN_WB) && XN_WB
     if (xn_ed_handle(cmd, a, na)) { ed_send(); return; }
+    if (cmd == 98u) {               /* (XENOISE) 98 XN_STAT, the Dock's check before an install: the battery's raw
+                                     * reading (14 bits), its level 0..3, USB power (0/1), the self-check (1: this
+                                     * image checks itself at start, hal/fm1_bootcheck.h) */
+        ed_b(song.batt_raw & 127u);
+        ed_b((song.batt_raw >> 7) & 127u);
+        ed_b((uint32_t)batt_level());
+        ed_b(usb.config && !usb.suspended ? 1u : 0u);
+        ed_b(1u);
+        ed_send();
+        return;
+    }
 #endif
     switch (cmd) {
     case ED_MOTION: {

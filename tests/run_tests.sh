@@ -391,6 +391,9 @@ else
 fi
 
 run "installer CLI (fm1_install.py) against a simulated FM-1" python3 tests/install_test.py
+$CC -O1 -Wall -Ifirmware/hal -o "$OUT/bootcheck_sum" tests/bootcheck_sum.c
+run "XENOISE: the image self-check (hal/fm1_bootcheck.h): build.py's seal, the device's sum, cut-off updates caught" \
+    python3 tests/bootcheck_test.py "$OUT/bootcheck_sum" build/felucca.bin
 run "navigation map (docs/navigation-map*.svg) matches the firmware's chains" python3 tools/gen_nav_map.py --check
 
 if command -v node >/dev/null 2>&1; then

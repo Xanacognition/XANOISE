@@ -306,8 +306,35 @@ def build_app():
             img += b"\xff" * (load - APP_XIP - len(img))
             img += blob
     img += b"\xff" * (-len(img) % 4)
+    img_seal(img, symv("fm1_img_check"))
     (OUT / "felucca.bin").write_bytes(img)
     return bytes(img), syms, dis, rt
+
+
+IMG_MAGIC = 0x584E494D                 # hal/fm1_bootcheck.h FM1_IMG_MAGIC
+IMG_SECTOR0 = 0x1000 - 0x120            # app.bin bytes in the first flash sector (0x4120..0x4FFF)
+
+
+def img_sum(img, skip):
+    """hal/fm1_bootcheck.h fm1_img_sum over app.bin's words; the words at skip and skip + 1 count as 0"""
+    h = 0x584E4F49
+    for i, (v,) in enumerate(struct.iter_unpack("<I", img)):
+        if i in (skip, skip + 1):
+            v = 0
+        h ^= v
+        h = ((((h << 5) | (h >> 27)) & 0xFFFFFFFF) + i + 0x9E3779B9) & 0xFFFFFFFF
+    return h
+
+
+def img_seal(img, at):
+    """(XENOISE) fm1_img_check = {magic, len, sum, ~sum}: what fm1_boot_check compares at every start"""
+    off = at - APP_XIP
+    if off % 4 or struct.unpack_from("<I", img, off)[0] != IMG_MAGIC:
+        raise SystemExit(f"fm1_img_check at {at:#x}: no image record there")
+    struct.pack_into("<II", img, off + 4, len(img), 0)
+    struct.pack_into("<I", img, off + 12, 0)
+    h = img_sum(img, (off >> 2) + 2)
+    struct.pack_into("<II", img, off + 8, h, h ^ 0xFFFFFFFF)
 
 
 def check(img, syms, dis, rt):
@@ -317,6 +344,39 @@ def check(img, syms, dis, rt):
         errors.append(f"_start is not at {APP_XIP:#x}")
     if img[:4] != bytes.fromhex("04818000"):
         errors.append(f"image starts with {img[:4].hex()}, not the entry stub")
+    # (XENOISE) the self-check (hal/fm1_bootcheck.h): in the first flash sector, sealed, calling nothing, reading
+    # nothing past that sector, and crt0 calling it before fm1_cstart
+    for name in ("fm1_boot_check", "fm1_img_check"):
+        mm = re.search(r"^([0-9a-f]+) .*\s([0-9a-f]+)\s+" + name + r"$", syms, re.M)
+        if not mm:
+            errors.append(f"{name} is not in the image")
+        elif int(mm[1], 16) + int(mm[2], 16) > APP_XIP + IMG_SECTOR0:
+            errors.append(f"{name} ends at {int(mm[1], 16) + int(mm[2], 16):#x}, past the first flash sector "
+                          f"({APP_XIP + IMG_SECTOR0:#x})")
+    rec = re.search(r"^([0-9a-f]+) .*\sfm1_img_check$", syms, re.M)
+    if rec:
+        off = int(rec[1], 16) - APP_XIP
+        magic, ln, sm, nsm = struct.unpack_from("<4I", img, off)
+        if magic != IMG_MAGIC or ln != len(img) or nsm != sm ^ 0xFFFFFFFF or img_sum(img, (off >> 2) + 2) != sm:
+            errors.append("fm1_img_check does not seal this image")
+        else:
+            notes.append(f"self-check: image sum {sm:08x} over {ln} B, record at +{off:#x}")
+    body = re.search(r"<fm1_boot_check>:\n(.*?)(?:\n\n|\Z)", dis, re.S)
+    if not body:
+        errors.append("fm1_boot_check is not in the disassembly")
+    else:
+        for ln in body[1].splitlines():
+            mm = re.search(r"\bcall\b.*<([\w.]+)", ln)
+            if mm:
+                errors.append(f"fm1_boot_check calls {mm[1]}: it must call nothing")
+            vals = [int(v) & 0xFFFFFFFF for v in re.findall(r"= (-?\d+)\b", ln)]
+            vals += [int(v, 16) for v in re.findall(r"<[^:>]*:\s*([0-9a-f]+)\s*>", ln)]
+            for a in vals:              # (the disassembly's immediates are decimal, its targets hex)
+                if APP_XIP + IMG_SECTOR0 <= a < 0x02100000:
+                    errors.append(f"fm1_boot_check refers to {a:#x}, past the first flash sector")
+    start = re.search(r"<_start>:\n(.*?)(?:\n\n|\Z)", dis, re.S)
+    if not start or not re.search(r"call[^\n]*fm1_boot_check[^\n]*\n(?:[^\n]*\n)*?[^\n]*call[^\n]*fm1_cstart", start[1]):
+        errors.append("crt0 does not call fm1_boot_check before fm1_cstart")
     rt_calls = [ln for ln in rt.splitlines() if re.search(r"\bcall\b", ln)]
     if rt_calls:                    # RAM code runs with the flash off: no calls into XIP
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
