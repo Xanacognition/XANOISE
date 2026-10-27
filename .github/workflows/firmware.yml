@@ -61,7 +61,14 @@ jobs:
             --title "XENOISE (latest build of the xanoise branch)" \
             --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with JIANT's web installer (Use a local file) or tools/fm1_install.py."
           gh release upload xenoise-latest xenoise.fwsc size_map.txt --clobber
-      # (XENOISE) the site on GitHub Pages: the Pilot's Dock (install, tutorial, cheat sheet), the package, the emulator
+      - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
+        run: |
+          pip install numpy
+          set -o pipefail
+          sh tests/run_tests.sh 2>&1 | tee tests.log
+      # (XENOISE) the site on GitHub Pages: the Pilot's Dock (install, tutorial, cheat sheet), the package, the emulator.
+      # After the host tests: with emcc on the path they would run JIANT's own emulator test (web/emu/emu_test.mjs), which
+      # checks JIANT's interface, not XENOISE's
       - uses: mymindstorm/setup-emsdk@v14
         with:
           version: 6.0.11
@@ -72,11 +79,6 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/site
-      - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
-        run: |
-          pip install numpy
-          set -o pipefail
-          sh tests/run_tests.sh 2>&1 | tee tests.log
   # (XENOISE) the site: needs Settings > Pages > Source "GitHub Actions" once; until then this job fails alone
   pages:
     needs: build
