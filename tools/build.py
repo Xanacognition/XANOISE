@@ -361,22 +361,35 @@ def check(img, syms, dis, rt):
             errors.append("fm1_img_check does not seal this image")
         else:
             notes.append(f"self-check: image sum {sm:08x} over {ln} B, record at +{off:#x}")
-    body = re.search(r"<fm1_boot_check>:\n(.*?)(?:\n\n|\Z)", dis, re.S)
+    def lines_in(name, default_size=0):           # the disassembly's lines of a symbol (by its address and size)
+        mm = re.search(r"^([0-9a-f]+) .*\s([0-9a-f]+)\s+" + name + r"$", syms, re.M)
+        if not mm:
+            return []
+        lo = int(mm[1], 16)
+        hi = lo + (int(mm[2], 16) or default_size)
+        out = []
+        for ln in dis.splitlines():
+            m2 = LINE.match(ln)
+            if m2 and lo <= int(m2.group(1), 16) < hi:
+                out.append(m2.group(3))
+        return out
+    body = lines_in("fm1_boot_check")
     if not body:
         errors.append("fm1_boot_check is not in the disassembly")
+    for ln in body:
+        mm = re.search(r"\bcall\b.*<([\w.]+)", ln)
+        if mm:
+            errors.append(f"fm1_boot_check calls {mm[1]}: it must call nothing")
+        vals = [int(v) & 0xFFFFFFFF for v in re.findall(r"= (-?\d+)\b", ln)]
+        vals += [int(v, 16) for v in re.findall(r"<[^:>]*:\s*([0-9a-f]+)\s*>", ln)]
+        for a in vals:                  # (the disassembly's immediates are decimal, its targets hex)
+            if APP_XIP + IMG_SECTOR0 <= a < 0x02100000:
+                errors.append(f"fm1_boot_check refers to {a:#x}, past the first flash sector")
+    calls = [m3[1] for ln in lines_in("_start", 0x60) for m3 in [re.search(r"\bcall\b.*<([\w.]+)", ln)] if m3]
+    if "fm1_boot_check" not in calls or "fm1_cstart" not in calls or calls.index("fm1_boot_check") > calls.index("fm1_cstart"):
+        errors.append(f"crt0 does not call fm1_boot_check before fm1_cstart (its calls: {calls})")
     else:
-        for ln in body[1].splitlines():
-            mm = re.search(r"\bcall\b.*<([\w.]+)", ln)
-            if mm:
-                errors.append(f"fm1_boot_check calls {mm[1]}: it must call nothing")
-            vals = [int(v) & 0xFFFFFFFF for v in re.findall(r"= (-?\d+)\b", ln)]
-            vals += [int(v, 16) for v in re.findall(r"<[^:>]*:\s*([0-9a-f]+)\s*>", ln)]
-            for a in vals:              # (the disassembly's immediates are decimal, its targets hex)
-                if APP_XIP + IMG_SECTOR0 <= a < 0x02100000:
-                    errors.append(f"fm1_boot_check refers to {a:#x}, past the first flash sector")
-    start = re.search(r"<_start>:\n(.*?)(?:\n\n|\Z)", dis, re.S)
-    if not start or not re.search(r"call[^\n]*fm1_boot_check[^\n]*\n(?:[^\n]*\n)*?[^\n]*call[^\n]*fm1_cstart", start[1]):
-        errors.append("crt0 does not call fm1_boot_check before fm1_cstart")
+        notes.append(f"self-check: fm1_boot_check {len(body)} insns, no calls, crt0 calls it first")
     rt_calls = [ln for ln in rt.splitlines() if re.search(r"\bcall\b", ln)]
     if rt_calls:                    # RAM code runs with the flash off: no calls into XIP
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
