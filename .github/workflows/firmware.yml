@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # XENOISE: build the installable package (.fwsc) with JieLi's toolchain on every push of the xanoise branch, attach it
-# to the run, and publish it as the pre-release "xenoise-latest" to download and install from.
+# to the run, and publish it as the pre-release "xenoise-latest" to download and install from; then the site (GitHub
+# Pages): the Pilot's Dock, the package and the emulator.
 name: firmware
 on:
   push:
@@ -60,8 +61,33 @@ jobs:
             --title "XENOISE (latest build of the xanoise branch)" \
             --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with JIANT's web installer (Use a local file) or tools/fm1_install.py."
           gh release upload xenoise-latest xenoise.fwsc size_map.txt --clobber
+      # (XENOISE) the site on GitHub Pages: the Pilot's Dock (install, tutorial, cheat sheet), the package, the emulator
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.11
+      - name: the emulator and the site (web/xenoise/make_site.py)
+        run: |
+          sh web/emu/build.sh
+          python3 web/xenoise/make_site.py build/felucca.fwsc build/site "$(git rev-parse --short HEAD)"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/site
       - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
         run: |
           pip install numpy
           set -o pipefail
           sh tests/run_tests.sh 2>&1 | tee tests.log
+  # (XENOISE) the site: needs Settings > Pages > Source "GitHub Actions" once; until then this job fails alone
+  pages:
+    needs: build
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

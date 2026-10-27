@@ -1,0 +1,346 @@
+<title>XENOISE Pilot's Dock</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: a pilot's manual on the device's own CONCRETE screen: a boot-line hero, then the dock (install, emulator,
+   export), the first flight, the Pilot System's four controls, and a cheat sheet card per page, keys left, actions right */
+:root {
+  --ground: #161618;   /* CONCRETE's background */
+  --slab: #1f1f22;     /* a panel on it */
+  --seam: #34343a;     /* lines between */
+  --text: #e8ecea;
+  --dim: #9da2ab;
+  --play: #ff9a00;     /* what plays: the accent */
+  --chord: #ffcc46;    /* the third accent */
+  --hot: #e84828;      /* bass, warnings */
+  --sel: #a0a6b0;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --mono: "Share Tech Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html { background: var(--ground); }
+body { background: var(--ground); color: var(--text); font: 16px/1.6 var(--body); margin: 0; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 0 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: var(--play); }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--chord); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; letter-spacing: .02em; }
+h2 { font-size: 1.6rem; text-transform: uppercase; }
+h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: .06em; }
+p { margin: 0; max-width: 65ch; }
+.label { font: 13px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+kbd { font: 13px/1 var(--mono); background: var(--slab); border: 1px solid var(--seam); border-bottom-width: 2px;
+  padding: 3px 6px; color: var(--text); white-space: nowrap; }
+kbd.k { color: var(--play); border-color: color-mix(in srgb, var(--play) 45%, var(--seam)); }
+section { display: grid; gap: 20px; padding-block: 48px 8px; border-top: 1px solid var(--seam); }
+section:first-of-type { border-top: 0; }
+
+/* the hero: the boot screen's last lines, then the name */
+.hero { display: grid; gap: 18px; padding-block: 48px 40px; }
+.boot { font: 14px/1.7 var(--mono); color: var(--dim); }
+.boot b { color: var(--chord); font-weight: 400; }
+.hero h1 { font-size: clamp(3rem, 12vw, 6.5rem); line-height: .9; letter-spacing: .06em; }
+.hero h1 span { color: var(--play); }
+.hazard { height: 10px; max-width: 520px; background: repeating-linear-gradient(-45deg, var(--chord) 0 10px, transparent 10px 20px); }
+.hero p { font-size: 1.15rem; color: var(--text); }
+.go { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { font: 600 15px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+  padding: 12px 18px; border: 1px solid var(--play); color: var(--ground); background: var(--play); cursor: pointer; display: inline-block; }
+.btn.ghost { background: transparent; color: var(--play); }
+.btn:disabled { opacity: .35; cursor: default; }
+
+/* the dock: three bays */
+.bays { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.bay { background: var(--slab); border: 1px solid var(--seam); padding: 20px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.bay .num { font: 13px var(--mono); color: var(--play); letter-spacing: .12em; }
+.bay ol, .bay ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.status { font: 14px/1.5 var(--mono); color: var(--chord); min-height: 1.5em; overflow-wrap: anywhere; }
+progress { width: 100%; height: 6px; accent-color: var(--play); }
+.log { font: 12px/1.5 var(--mono); color: var(--dim); max-height: 160px; overflow: auto; white-space: pre-wrap; margin: 0; }
+.note { font-size: .9rem; color: var(--dim); }
+.warn { border-left: 3px solid var(--hot); padding-left: 12px; }
+.ask { border: 1px solid var(--chord); padding: 12px; display: grid; gap: 10px; }
+.file { font: 14px var(--body); color: var(--dim); }
+
+/* the first flight: a real sequence of steps */
+.flight { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }
+.flight li { display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; counter-increment: s; }
+.flight li::before { content: counter(s, decimal-leading-zero); font: 700 1.3rem/1.2 var(--display); color: var(--play); }
+.flight li div { display: grid; gap: 4px; min-width: 0; }
+
+/* the Pilot System: the four controls */
+.pilot { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px; background: var(--seam); border: 1px solid var(--seam); }
+.pilot div { background: var(--slab); padding: 16px; display: grid; gap: 6px; align-content: start; }
+.pilot strong { font: 700 1.1rem var(--display); letter-spacing: .06em; color: var(--play); }
+
+/* the cheat sheet: a card a page */
+.sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.card { background: var(--slab); border: 1px solid var(--seam); padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tag { font: 700 13px var(--display); letter-spacing: .1em; padding: 2px 8px; background: var(--play); color: var(--ground); }
+.card dl { margin: 0; display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 6px 12px; font-size: .95rem; }
+.card dt { font: 13px/1.5 var(--mono); color: var(--chord); letter-spacing: .04em; }
+.card dd { margin: 0; min-width: 0; }
+footer { border-top: 1px solid var(--seam); padding-block: 32px 0; display: grid; gap: 10px; color: var(--dim); font-size: .9rem; }
+@media (max-width: 420px) { .card dl { grid-template-columns: 1fr; gap: 2px; } .card dd { margin-bottom: 6px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .hazard { animation: crawl 1.2s linear infinite; background-size: 28.28px 100%; }
+  @keyframes crawl { to { background-position: 28.28px 0; } }
+}
+</style>
+
+<div class="wrap">
+<header class="hero" id="top">
+  <div class="boot">&gt; NEURAL LINK ....... OK<br>&gt; TARGETING ......... OK<br>&gt; AUDIO WEAPONS ..... <b>ARMED</b></div>
+  <h1>XENO<span>ISE</span></h1>
+  <div class="hazard" aria-hidden="true"></div>
+  <p>A tracker-style groovebox for the M-VAVE FM-1. Generate songs, edit them one cell at a time, and play them live. XENOISE runs WND-1's tracker over JIANT FM's sound engines.</p>
+  <div class="go">
+    <a class="btn" href="#install">Install</a>
+    <a class="btn ghost" href="#flight">First flight</a>
+    <a class="btn ghost" href="#sheet">Cheat sheet</a>
+  </div>
+</header>
+
+<section id="install">
+  <div class="label">The dock</div>
+  <h2>Install, try, export</h2>
+  <div class="bays">
+    <div class="bay">
+      <div class="num">BAY 1 · FIRMWARE</div>
+      <h3>Install XENOISE</h3>
+      <ol>
+        <li>Switch the FM-1 on and connect it to your computer with a USB data cable. Don't use a hub.</li>
+        <li>Close the M-VAVE app, your DAW and other MIDI tools.</li>
+        <li>Press Install and allow MIDI when the browser asks.</li>
+      </ol>
+      <p class="note">It writes only over official V15 or JIANT/XENOISE. Coming from Felucca, Skiff or another custom firmware? Return to official V15 first with <a href="https://juanjiant-bit.github.io/JIANT/webapp/installer/" target="_blank" rel="noopener">JIANT's installer</a>.</p>
+      <div id="inst-here">
+        <div class="go"><button class="btn" id="inst-go" type="button" disabled>Install</button></div>
+        <label class="file" for="inst-file">Or install a .fwsc file you downloaded:<br><input id="inst-file" type="file" accept=".fwsc"></label>
+        <div class="ask" id="inst-ask" hidden>
+          <p id="inst-ask-text"></p>
+          <div class="go"><button class="btn" id="inst-yes" type="button">Install it</button><button class="btn ghost" id="inst-no" type="button">Cancel</button></div>
+        </div>
+        <progress id="inst-bar" max="100" value="0"></progress>
+        <div class="status" id="inst-status" role="status">Loading the firmware…</div>
+        <p class="note warn">Don't unplug the cable while it writes. If it stops, plug it back in and press Install again: it carries on where it stopped.</p>
+        <details><summary class="label">Log</summary><pre class="log" id="inst-log"></pre></details>
+      </div>
+      <div id="inst-away" hidden>
+        <p>Installing needs USB MIDI, which this embedded view doesn't have. Open the XENOISE site in Chrome or Edge on a computer:</p>
+        <p><a href="https://xanacognition.github.io/XANOISE/" target="_blank" rel="noopener">xanacognition.github.io/XANOISE</a></p>
+        <p class="note">The latest build is also on GitHub as <a href="https://github.com/Xanacognition/XANOISE/releases/tag/xenoise-latest" target="_blank" rel="noopener">xenoise-latest</a> (xenoise.fwsc).</p>
+      </div>
+    </div>
+    <div class="bay">
+      <div class="num">BAY 2 · EMULATOR</div>
+      <h3>Fly it in the browser</h3>
+      <p>The whole firmware compiled for the browser: the same screens, sounds and songs. Your computer keyboard plays the FM-1's keys, and a MIDI keyboard or a DAW's clock works too.</p>
+      <ul>
+        <li><kbd>Z</kbd>…<kbd>'</kbd> and <kbd>Q</kbd>…<kbd>O</kbd> play the keys</li>
+        <li><kbd>1</kbd>…<kbd>=</kbd> are FX … REC, <kbd>[</kbd> <kbd>]</kbd> are OCT</li>
+        <li><kbd>↑</kbd> <kbd>↓</kbd> SELECT, <kbd>←</kbd> <kbd>→</kbd> ALGORITHM</li>
+        <li><kbd>Shift</kbd>-click holds a button down</li>
+      </ul>
+      <div class="go"><a class="btn ghost" id="emu-link" href="emu/" target="_blank" rel="noopener">Open the emulator</a></div>
+    </div>
+    <div class="bay">
+      <div class="num">BAY 3 · EXPORT</div>
+      <h3>Songs, stems, recordings</h3>
+      <p>Under the emulator's screen:</p>
+      <ul>
+        <li><strong>Export song (WAV):</strong> plays the whole sequence once, plus two seconds of tail, faster than real time and without stopping what you hear.</li>
+        <li><strong>Export stems (ZIP):</strong> the mix and each track on its own (BRK, KIK, PER, BAS, KEY, SYN) as 16-bit WAVs at 44.1 kHz, all the same length. They line up to the sample and add back up to the mix, ready for any DAW.</li>
+        <li><strong>● Rec:</strong> records what's playing, up to ten minutes.</li>
+      </ul>
+      <p class="note">Inside claude.ai, files arrive as a ZIP because .wav downloads aren't allowed there.</p>
+    </div>
+  </div>
+</section>
+
+<section id="flight">
+  <div class="label">Tutorial</div>
+  <h2>First flight</h2>
+  <ol class="flight">
+    <li><div><h3>Power on</h3><p>The boot sequence plays in your theme's colours and fades into the tracker. That's <kbd class="k">HOM</kbd>: six tracks from left to right (BRK, KIK, PER, BAS, KEY, SYN) and the rows running down.</p></div></li>
+    <li><div><h3>Build a song</h3><p>Hold <kbd class="k">SAVE</kbd> to open GEN. Turn <kbd>PRESETS</kbd> to choose a genre. Leave the rest on AUTO, or pick a progression and how far apart the chords and melody sit. Press <kbd>OCT+</kbd> twice: once asks, once creates.</p></div></li>
+    <li><div><h3>Play it</h3><p>Press <kbd>PLAY</kbd>. The song runs through its form: intro, verses and choruses (each twice), a breakdown, a build, the drop and the outro. Press <kbd class="k">SEQ</kbd> to see the parts; in SEQ, press <kbd class="k">SEQ</kbd> again for LIVE, where the white keys queue the next pattern.</p></div></li>
+    <li><div><h3>Change a cell</h3><p>Go back to <kbd class="k">HOME</kbd> and press it again to edit. <kbd>PRESETS</kbd> moves down the rows and <kbd>ALGORITHM</kbd> across the tracks. K1–K4 set the cell's note, velocity, effect and amount. Notes read Renoise-style: <code>C-4</code>, <code>F#2</code>.</p></div></li>
+    <li><div><h3>Shape the sound</h3><p><kbd class="k">ENV</kbd> shows the actual sound with its envelope drawn on it; turning a knob plays the note. <kbd class="k">LFO</kbd> and <kbd class="k">ARP</kbd> use JIANT's own LFO and arpeggiator, per track.</p></div></li>
+    <li><div><h3>Save it</h3><p>Tap <kbd class="k">SAVE</kbd>. <kbd>PRESETS</kbd> picks one of 14 slots. Turn K1 (SAVE) and press <kbd>OCT+</kbd> to confirm. Something went wrong? Hold <kbd class="k">SEQ</kbd> and press <kbd>OCT-</kbd> to undo.</p></div></li>
+    <li><div><h3>Stuck?</h3><p>Hold <kbd class="k">SEQ</kbd> on any page for a second: the page's controls appear for as long as you hold it.</p></div></li>
+  </ol>
+</section>
+
+<section id="pilot">
+  <div class="label">The Pilot System</div>
+  <h2>Four controls, every page</h2>
+  <p>Every page works the same way, so once you know one, you know them all.</p>
+  <div class="pilot">
+    <div><strong>PRESETS</strong><p>The rows: the tracker's row, a save slot, a settings group, a genre, a part of the sequence.</p></div>
+    <div><strong>ALGORITHM</strong><p>The columns: the track. On pages without tracks (MST, SAV, GEN) it moves between knobs, and a frame marks the one it's on.</p></div>
+    <div><strong>SELECT</strong><p>Turns what's selected: the pattern, a slot's pattern, the knob ALGORITHM is on, an effect on or off.</p></div>
+    <div><strong>K1–K4</strong><p>The page's four knobs, numbered on screen in their own colours. Press the page's button again for its next page.</p></div>
+  </div>
+  <div class="bays">
+    <div class="bay"><h3>Questions</h3><p>Anything that overwrites asks first. <kbd>OCT+</kbd> means yes and <kbd>OCT-</kbd> means no.</p></div>
+    <div class="bay"><h3>Undo</h3><p>Hold <kbd class="k">SEQ</kbd> and press <kbd>OCT-</kbd> anywhere. It undoes one step: a song replaced, a slot written or moved, a change to the sequence. Stop playback first for anything stored.</p></div>
+    <div class="bay"><h3>Help</h3><p>Hold <kbd class="k">SEQ</kbd> on its own for the current page's controls.</p></div>
+  </div>
+</section>
+
+<section id="sheet">
+  <div class="label">Cheat sheet</div>
+  <h2>Every page</h2>
+  <div class="sheet">
+    <article class="card"><header><span class="tag">HOM</span><h3>The tracker</h3></header><dl>
+      <dt>HOME</dt><dd>Plain tracker; again for NOTE · VEL · FX · AMT on the knobs; again plain</dd>
+      <dt>PRESETS</dt><dd>Row</dd><dt>ALGORITHM</dt><dd>Track; past SYN, the visualizer</dd><dt>SELECT</dt><dd>Pattern 1–8</dd>
+      <dt>White keys</dt><dd>Play the track; REC writes them in</dd><dt>Black keys</dt><dd>Ghost notes and passing notes; HOME held: tracks and F1–F4</dd>
+      <dt>Hold ARP</dt><dd>Note repeat on or off</dd><dt>HOME+PLAY</dt><dd>SIT: the song plays itself, sections and small changes</dd>
+      <dt>F (edit)</dt><dd>CLR · OFF · LEN · DUP</dd></dl></article>
+    <article class="card"><header><span class="tag">SAV</span><h3>The store</h3></header><dl>
+      <dt>PRESETS</dt><dd>Slot 1–14</dd><dt>K1 · K2</dt><dd>Save · load</dd><dt>K3 · K4</dt><dd>Copy · paste a song</dd>
+      <dt>SAVE again</dt><dd>Page 2: K1 insert (the copy here, the rest move on) · K2 outsert (the slot out, the rest move back) · K3 new · K4 delete · F1 undo</dd>
+      <dt>OCT+ ×1</dt><dd>A new empty song on the default kit</dd><dt>OCT+ ×4</dt><dd>Generate (asks)</dd><dt>OCT-</dt><dd>Delete the slot (OCT- again confirms)</dd></dl></article>
+    <article class="card"><header><span class="tag">GEN</span><h3>The next song (hold SAVE)</h3></header><dl>
+      <dt>PRESETS</dt><dd>Genre (or EMPTY)</dd><dt>Page 1</dt><dd>GENRE · PROG (Axis, Royal Road, Canon …) · CHORDS (½ bar to 2 bars each) · MELODY (normal, airy, sparse)</dd>
+      <dt>SAVE</dt><dd>Page 2: BPM · KEY · FORM (SONG, CLUB, JAM, EPIC) · BASS (warm keys or sine, an octave down)</dd>
+      <dt>SAVE</dt><dd>Page 3: the track's CHANCE · MUTATE · DRIFT · DENSITY; F FILL · DICE · RESTORE · FILL ALL</dd>
+      <dt>OCT+</dt><dd>Create (OCT+ again)</dd><dt>F3 · F4</dt><dd>Undo · all AUTO</dd><dt>Hold SAVE</dt><dd>Back to SAV</dd></dl></article>
+    <article class="card"><header><span class="tag">SEQ</span><h3>The sequence</h3></header><dl>
+      <dt>PRESETS</dt><dd>Slot</dd><dt>SELECT</dt><dd>That slot's pattern</dd><dt>K1–K4</dt><dd>Copy · paste · insert · outsert (OCT+ confirms)</dd>
+      <dt>Black 1–6</dt><dd>That track in or out of this slot only</dd><dt>OCT+ · OCT-</dt><dd>Add a slot · delete the last</dd>
+      <dt>F</dt><dd>FORM · LOOP · SHUFFLE · UNDO</dd><dt>SEQ again</dt><dd>LIVE: white keys, K1 or PRESETS queue the next pattern; K2 loop</dd></dl></article>
+    <article class="card"><header><span class="tag">CHD</span><h3>The chords (SCL)</h3></header><dl>
+      <dt>White keys</dt><dd>Play chords in the key</dd><dt>PRESETS</dt><dd>Chord slot</dd><dt>SELECT</dt><dd>Progression</dd>
+      <dt>F</dt><dd>WRITE · NEW PROG · UNDO · HEAR</dd><dt>A / B</dt><dd>Choruses, breakdown and drop play the progression from its middle: the B loop</dd></dl></article>
+    <article class="card"><header><span class="tag">ENV</span><h3>The sound's shape</h3></header><dl>
+      <dt>Screen</dt><dd>The real waveform under its envelope, a playhead, the live output</dd><dt>K1–K4</dt><dd>Attack · decay · sustain · release (drums: their own)</dd>
+      <dt>ENV again</dt><dd>Page 2: filter envelope · resonance · swoop · vibrato (PER: the hats)</dd><dt>F2</dt><dd>Play it</dd></dl></article>
+    <article class="card"><header><span class="tag">LFO</span><h3>The track's LFO</h3></header><dl>
+      <dt>K1–K4</dt><dd>Rate (free or in time) · wave · pitch · filter</dd><dt>LFO again</dt><dd>Page 2: amp · shape · fade</dd><dt>F4</dt><dd>Back to the sound's own LFO</dd></dl></article>
+    <article class="card"><header><span class="tag">ARP</span><h3>The track's arp</h3></header><dl>
+      <dt>K1–K4</dt><dd>Mode (up, down, up-down, random …) · rate · octaves · gate</dd><dt>ARP again</dt><dd>Page 2: swing · probability · hold · order</dd>
+      <dt>F2 · F4</dt><dd>Hold · off</dd><dt>Screen</dt><dd>The next 16 notes, with a playhead</dd></dl></article>
+    <article class="card"><header><span class="tag">EDT</span><h3>The sound</h3></header><dl>
+      <dt>ALGORITHM</dt><dd>Track</dd><dt>SELECT</dt><dd>Its preset</dd><dt>K1–K4</dt><dd>Its parameters; EDIT again for the next page</dd><dt>F</dt><dd>PAGE · PLAY · RANDOM · INIT</dd></dl></article>
+    <article class="card"><header><span class="tag">MST</span><h3>Settings (GLO)</h3></header><dl>
+      <dt>PRESETS</dt><dd>Group: TEMPO · TONE · GROOVE · SYSTEM</dd><dt>ALGORITHM</dt><dd>Parameter</dd><dt>SELECT</dt><dd>Turns it</dd>
+      <dt>SYSTEM</dt><dd>THEME (13, from KNF's covers) · BLACK keys (play or tracks) · CLOCK (INT, OUT, IN)</dd>
+      <dt>F</dt><dd>PAGE · TAP tempo · SIT · CLEAR PATTERN</dd><dt>GLO again</dt><dd>The mixer</dd></dl></article>
+    <article class="card"><header><span class="tag">MIX</span><h3>Mastering panel</h3></header><dl>
+      <dt>Screen</dt><dd>A strip per track and the master: meters with peak hold, fader, pan, M/S</dd><dt>ALGORITHM</dt><dd>Track</dd>
+      <dt>K1–K4</dt><dd>Volume · pan · reverb · delay</dd><dt>SELECT</dt><dd>Master volume</dd><dt>F</dt><dd>MUTE · SOLO · ALL ON · CLEAR TRACK</dd></dl></article>
+    <article class="card"><header><span class="tag">FX</span><h3>Perform</h3></header><dl>
+      <dt>White keys</dt><dd>Punch-ins on or off: repeats, reverse, half speed, scatter, dub, wash, filter, odd meters</dd><dt>Black 1–6</dt><dd>Mute (F1: solo)</dd>
+      <dt>PRESETS</dt><dd>Row: punch-ins or tracks</dd><dt>ALGORITHM · SELECT</dt><dd>Along the row · on or off</dd>
+      <dt>K1–K4</dt><dd>Filter (low-pass ← → high-pass) · chop · step · wash</dd><dt>FX again</dt><dd>Close, everything back</dd></dl></article>
+    <article class="card"><header><span class="tag">VIS</span><h3>The visualizer</h3></header><dl>
+      <dt>Get there</dt><dd>On HOM, ALGORITHM right past SYN</dd><dt>PLAY</dt><dd>Engage: every track fires its weapon on its hits at city towers, bases, tanks, gunships and drones</dd>
+      <dt>Hold ARP</dt><dd>ALL RANGE: PRESETS or ALGORITHM turns the mech</dd><dt>HOME</dt><dd>Disengage, back to the tracker</dd></dl></article>
+    <article class="card"><header><span class="tag">MIDI</span><h3>Clock and keys</h3></header><dl>
+      <dt>CLOCK OUT</dt><dd>24 pulses a beat at the song's tempo, START and STOP with PLAY</dd><dt>CLOCK IN</dt><dd>Follows the tempo, START, CONTINUE and STOP</dd>
+      <dt>Ports</dt><dd>USB and the TRS jack</dd></dl></article>
+  </div>
+</section>
+
+<footer>
+  <p>XENOISE is free software under the GPL-3.0, with no warranty: use it at your own risk. The source is at <a href="https://github.com/Xanacognition/XANOISE" target="_blank" rel="noopener">github.com/Xanacognition/XANOISE</a>.</p>
+  <p>Built on JIANT FM by Juan Jiant and Felucca by Leo Kuroshita (Hügelton Instruments), with the WND-1 tracker interface. M-VAVE and FM-1 are trademarks of their respective owners; XENOISE is not affiliated with or endorsed by them.</p>
+</footer>
+</div>
+
+<script type="module">
+/*LIB*/
+const META = /*META*/;
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("inst-log").textContent += `${new Date().toISOString().slice(11, 19)} ${s}\n`; };
+const say = (s) => { $("inst-status").textContent = s; };
+const MSG = {
+  checking: "Checking what the FM-1 runs…", resuming: "The FM-1 is in update mode: carrying on with the write.",
+  start: "Starting the update…", verify: "Checking…", loader: "Switching to update mode…", write: "Writing…", reboot: "Restarting…", done: "Done. XENOISE is installed.",
+  nomidi: "This browser has no Web MIDI. Open this page in Chrome or Edge on a computer.",
+  denied: "MIDI access was refused. Allow MIDI devices for this site (the icon left of the address), reload and press Install again.",
+  blocked: "MIDI is blocked for this site. Allow MIDI devices in the site settings, reload and press Install again.",
+  midifail: "The browser couldn't start MIDI. Close other MIDI programs, replug the FM-1 and reload.",
+  notfound: "No FM-1 answered. Switch it on, use a data cable straight to the computer, and close the M-VAVE app and DAWs.",
+  busy: "Another program is using the FM-1's MIDI port: ", noanswer: "The FM-1's port is there but doesn't answer: ",
+  noupdate: "The FM-1 didn't start the update. Nothing was written. Stop playback, switch it off and on, and try again.",
+  model: "The connected device isn't an FM-1. ", lost: "The USB connection dropped. Replug it and press Install again.",
+  stopped: "It stopped. Replug the cable and press Install again: it carries on.",
+  noloader: "The FM-1 in update mode wasn't found. Replug the cable and press Install again: it stays in update mode until it's done.",
+  noreturn: "The FM-1 didn't come back. Switch it off and on.", mismatch: "Written, but the FM-1 reports another firmware: ",
+  oldstock: "This FM-1 runs an older official firmware. Update it to official V15 first (JIANT's installer, Return to official V15). Found: ",
+  newstock: "This FM-1 runs an official firmware newer than V15. Return to official V15 first with JIANT's installer. Found: ",
+  skiff: "This FM-1 runs Skiff. Return to official V15 first with JIANT's installer (it backs up Skiff's songs). Found: ",
+  felucca: "This FM-1 runs Felucca. Return to official V15 first with JIANT's installer (it backs everything up). Found: ",
+  otherfw: "This FM-1 runs another custom firmware. Return to official V15 first with JIANT's installer. Found: ",
+  badpkg: "That file isn't a XENOISE or JIANT package (FM-1_9xx).",
+};
+const msg = (k, a = "") => (MSG[k] || k) + a;
+let image = null, product = "", writing = false, pending = null;
+const inArtifact = !!(window.claude && window.claude.use);
+if (inArtifact) { $("inst-here").hidden = true; $("inst-away").hidden = false; $("emu-link").href = "https://xanacognition.github.io/XANOISE/emu/"; }
+
+function take(bytes, from) {
+  const p = productOf(bytes);
+  if (!/^FM-1_9\d\d$/.test(p)) { say(msg("badpkg")); log(`${from}: ${p || "no identity"}`); return false; }
+  image = logicalImage(bytes); product = p;
+  say(`Ready: ${from} (${p}, ${bytes.length.toLocaleString("en")} bytes).`);
+  $("inst-go").disabled = writing;
+  return true;
+}
+(async () => {
+  if (inArtifact) return;
+  if (!navigator.requestMIDIAccess) { say(msg("nomidi")); }
+  if (!META.pkg) { say("Choose a xenoise.fwsc file to install."); return; }
+  try {
+    const r = await fetch(META.pkg, { cache: "no-cache" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const ok = take(new Uint8Array(await r.arrayBuffer()), `XENOISE ${META.version || ""}`.trim());
+    if (ok && !navigator.requestMIDIAccess) say(msg("nomidi"));
+  } catch (e) { log(`firmware: ${e.message}`); say("The firmware didn't load here. Choose a xenoise.fwsc file instead."); }
+})();
+$("inst-file").addEventListener("change", async () => {
+  const f = $("inst-file").files[0];
+  if (f) take(new Uint8Array(await f.arrayBuffer()), f.name);
+});
+const ui = {
+  say: (k, a = "") => { say(msg(k, a)); log(`${k} ${a}`); },
+  step: (k, a) => {
+    if (k === "verify") $("inst-bar").value = a / 1241 * 100;
+    if (k === "write") $("inst-bar").value = (74 + a) / 1241 * 100;
+    if (k === "done") $("inst-bar").value = 100;
+    if (MSG[k]) say(MSG[k]);
+    if (k !== "verify" && k !== "write") log(`${k} ${a ?? ""}`);
+  },
+  confirm: () => false,
+  save: () => {},
+  openStock: () => {},
+};
+function ask(text) {                             // an in-page question (the viewer's frame shows no confirm())
+  return new Promise((res) => { $("inst-ask-text").textContent = text; $("inst-ask").hidden = false; pending = res; });
+}
+$("inst-yes").addEventListener("click", () => { $("inst-ask").hidden = true; if (pending) pending(true); pending = null; });
+$("inst-no").addEventListener("click", () => { $("inst-ask").hidden = true; if (pending) pending(false); pending = null; });
+$("inst-go").addEventListener("click", async () => {
+  if (writing || !image) return;
+  if (!(await ask(`Write ${product} to the FM-1? Keep the cable in until it says Done.`))) return;
+  writing = true; $("inst-go").disabled = true; $("inst-file").disabled = true;
+  try {
+    const midi = await midiAccess(navigator, log);
+    const up = new Updater(midi, log, { refresh: () => navigator.requestMIDIAccess({ sysex: true }) });
+    await runInstall({ up, image, product, ui, state: {} });
+    say(MSG.done); $("inst-bar").value = 100;
+  } catch (e) {
+    const code = e && e.code && MSG[e.code] ? e.code : "";
+    say(code ? msg(code, e.detail || "") : `Error: ${(e && e.message) || e}`);
+    log(`error ${code}: ${e && e.message}`);
+  }
+  writing = false; $("inst-go").disabled = !image; $("inst-file").disabled = false;
+});
+</script>

@@ -601,6 +601,12 @@ EXPORT void web_play(uint32_t on) { transport_req = (uint8_t)(on ? 1u : 2u); }
 EXPORT uint32_t web_beat_samples(void) { return beat_samples(); }
 EXPORT uint32_t web_trk_live(void) { return trk_live; }
 #if defined(__EMSCRIPTEN__)
-EXPORT uint32_t web_xn_export(void) { return xn_export_song(); }   /* (XENOISE) EXPORT: the sequence once, offline */
+EXPORT uint32_t web_xn_export(uint32_t solo) { return xn_export_song(solo); }   /* (XENOISE) EXPORT: the sequence once, offline (solo: a stem) */
+EXPORT const char *web_xn_track(uint32_t t) { return xn_track_name(t); }
+EXPORT void web_lev_mode(uint32_t m) { lev_rec_mode = (uint8_t)m; lev_rec_at = 0; if (m == 1u) lev_rec_n = 0; }   /* (XENOISE: stems) */
+EXPORT int32_t *web_lev_rec(void) { return &lev_rec[0][0]; }
+EXPORT uint32_t web_lev_n(void) { return lev_rec_n; }
+EXPORT void web_lev_set_n(uint32_t n) { lev_rec_n = n; }
+EXPORT const char *web_xn_song(void) { return xn_song_name(); }
 EXPORT void web_xn_export_stop(void) { xn_export_stop(); }
 #endif

@@ -2786,9 +2786,16 @@ WASM_EXPORT("kawa_store_loaded") void kawa_store_loaded(void)   /* the page put 
 /* (XENOISE) the emulator page's EXPORT: a copy of the running device (its whole memory) plays the sequence from its
  * first slot, once, offline; this says how many frames that takes (steps x 15 s / BPM at 44.1 kHz), then STOP lets
  * the tail ring out */
-static uint32_t xn_export_song(void)
+static uint32_t xn_export_song(uint32_t solo)   /* solo: 0 the mix, 1 + t that track alone (a stem) */
 {
+    /* a stem: every track still plays (the kick still pumps the rest), only the others' sound is left out of the mix
+     * (JIANT's mix_skip: a bit a JIANT track; KEY with its counter voice). KIK and PER share one: the other's notes off */
+    static const uint8_t JT[NT] = {1u << 0, 1u << 1, 1u << 1, 1u << 2, 1u << 3 | 1u << 5, 1u << 4};
     uint32_t k, n = 0, bpm = song.bpm ? song.bpm : 120u;
+    for (k = 0; k < NT; k++) song.trk[k].solo = 0;
+    mix_skip = (uint8_t)(solo ? 0x3Fu & ~JT[(solo - 1u) % NT] : 0u);
+    if (solo == 1u + T_KIK) song.trk[T_DRM].mute = 1;
+    if (solo == 1u + T_DRM) song.trk[T_KIK].mute = 1;
     song.loop = 0;
     sq_start = 0;
     sit_on = 0;
@@ -2800,4 +2807,6 @@ static uint32_t xn_export_song(void)
     return n;
 }
 static void xn_export_stop(void) { sq_req = 2; }
+static const char *xn_track_name(uint32_t t) { return TRK_ID[t % NT]; }
+static const char *xn_song_name(void) { return song.name; }
 #endif

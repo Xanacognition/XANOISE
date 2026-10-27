@@ -375,10 +375,24 @@ static __attribute__((noinline)) void master_begin(void)
                                                          * limiter's headroom (0.5.1: was 16000, it limited 95 % of the time) */
 #define LEV_GATE 400                                    /* -38 dB */
 static int32_t lev_env, lev_g = 32768, lev_cur = 32768, lev_dg;   /* the gain now and its step a sample (master_out) */
+#if defined(__EMSCRIPTEN__)
+/* (XENOISE) the browser's stems: the mix's leveler gain, block by block, recorded (1) and played back to each stem (2),
+ * so the stems sum to the mix (web/emu/index.html, felucca_web.c web_lev_*) */
+#define LEV_REC_N 400000u
+static int32_t lev_rec[LEV_REC_N][3];
+static uint32_t lev_rec_n, lev_rec_at;
+static uint8_t lev_rec_mode;
+#endif
 static __attribute__((noinline)) void lev_block(uint32_t n)
 {
     uint32_t i;
     int32_t pk = 0, g1;
+#if defined(__EMSCRIPTEN__)
+    if (lev_rec_mode == 2u) {
+        if (lev_rec_at < lev_rec_n) { lev_cur = lev_rec[lev_rec_at][0]; lev_dg = lev_rec[lev_rec_at][1]; lev_g = lev_rec[lev_rec_at][2]; lev_rec_at++; }
+        return;
+    }
+#endif
     for (i = 0; i < n; i++) {
         int32_t l = mix_l[i] + wet[i], r = mix_r[i] + wet[i];
         l = l < 0 ? -l : l;
@@ -406,6 +420,9 @@ static __attribute__((noinline)) void lev_block(uint32_t n)
     lev_cur = lev_g;                                    /* (master_out ramps it across the block, after the DC block) */
     lev_dg = (g1 - lev_g) / (int32_t)n;
     lev_g = g1;
+#if defined(__EMSCRIPTEN__)
+    if (lev_rec_mode == 1u && lev_rec_n < LEV_REC_N) { lev_rec[lev_rec_n][0] = lev_cur; lev_rec[lev_rec_n][1] = lev_dg; lev_rec[lev_rec_n][2] = lev_g; lev_rec_n++; }
+#endif
 }
 /* DUCK (G_DUCK 0..100, G_DREL its release 40 .. 600 ms): a kick (eng_drum.c duck_hit) takes the parts that are not
  * DRUM down by up to 30 dB in ~2 ms, holds them there ~25 ms, and they come back with the release, shaped as a
