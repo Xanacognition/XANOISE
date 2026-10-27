@@ -308,8 +308,13 @@ static const xs_patch_t XS_MEL_FMPLUCK = {{XF6, XPH, XA}, {"FM PLUCK", "HARP", "
 static uint32_t xs_sig[8];
 /* the mix (dB on top of VOL): the drums up (WND-1's own mix had them 2-3x the synths' gain), the keys and the synth under
  * the bass; each JIANT track's sound's trim (XS_PATCH, the kits') */
-#define XS_DB_DRUMS 2
-static const int8_t XS_DB[6] = {2, 2, 2, 0, -3, -4};
+/* (XENOISE: the balance, measured on generated songs across the genres, tools/mix_balance.mjs: each stem's level against
+ * the mix's) the kit 8 dB up, its kick lane down to match: the snares and hats were 15..39 dB under the mix, the kick
+ * now 2 dB under where it was (it was the whole mix in four-on-the-floor), BOOM and DEEP 808 (their long tails) 7 dB;
+ * the bass 3 dB down (as loud as the whole mix), the keys 2 and the synth 7 up (buried) */
+#define XS_DB_DRUMS 10
+static const uint8_t XS_KICK_LANE_Q8[9] = {144, 108, 144, 144, 108, 144, 144, 144, 144};   /* 256 * 10^(-dB/40): 10, 15 dB */
+static const int8_t XS_DB[6] = {2, 2, 2, -3, -1, 3};
 static int8_t xs_trim[NTRK];
 static const char *xs_word[NTRK];                 /* each JIANT track's sound (XS_PATCH's word) */
 static const int8_t XS_KIT_TRIM[WB_NKICK] = {0, 0, 0, 6, 0, 3, 0, 2, 0};   /* (the kits' kicks: LOFI DUST 6 dB under) */
@@ -414,7 +419,7 @@ static void xs_mix(void)
         if (t == T_DRM) {                           /* KIK + PER: one JIANT track, the louder one's level, the lanes */
             int32_t vk = song.trk[T_KIK].vol, vp = s->vol, top = vk > vp ? vk : vp;
             uint32_t l;
-            xj_lane(0, vk, top);
+            xj_lane(0, vk * XS_KICK_LANE_Q8[song.trk[T_KIK].patch % WB_NKICK] >> 8, top);
             for (l = 1; l < 8u; l++) xj_lane(l, vp, top);
             xj_mix(XJ_DRM, top, XS_DB_DRUMS + xs_trim[XJ_DRM], s->pan, s->rev, s->dly);
             continue;
