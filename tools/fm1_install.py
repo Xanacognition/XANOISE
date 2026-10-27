@@ -12,6 +12,7 @@ the FM-1 restarts and the installed identity is checked.
   fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force]
   fm1_install.py FM-1.fwsc            (the official V15 file: back to the stock firmware)
   fm1_install.py --info [--port NAME]
+  fm1_install.py --list               (the MIDI ports this computer has, and which ones the install would ask)
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write. Needs mido with python-rtmidi.
@@ -460,9 +461,23 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("package", nargs="?", help="Felucca package (.fwsc)")
     ap.add_argument("--info", action="store_true", help="print the identity of the connected FM-1")
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
+    ap.add_argument("--list", action="store_true", help="list the MIDI ports (the FM-1's: give its name to --port)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
     a = ap.parse_args(argv)
+    if a.list:
+        try:
+            backend = backend or MidoBackend()
+        except ImportError:
+            print("error: needs mido and python-rtmidi (pip install mido python-rtmidi)", file=sys.stderr)
+            return 2
+        ins, outs = backend.input_names(), backend.output_names()
+        print("MIDI inputs:" if ins else "MIDI inputs: none", file=out)
+        for n in ins:
+            mark = "FM-1-like" if PORT_RE.search(n) else "skipped unless --port names it"
+            print(f"  {n}   ({mark}; output: {pair_output(n, outs) or 'none'})", file=out)
+        print("MIDI outputs: " + (", ".join(outs) or "none"), file=out)
+        return 0
     if bool(a.info) == bool(a.package):
         ap.error("give a PACKAGE.fwsc or --info")
     try:
