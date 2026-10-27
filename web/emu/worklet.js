@@ -72,6 +72,19 @@ if (typeof registerProcessor === "function") {
       else if (m.type === "master") ex.web_master(m.value | 0);
       else if (m.type === "midi") ex.web_midi(m.data[0] | 0, m.data[1] | 0, m.data[2] | 0);
       else if (m.type === "visible") this.period = m.on ? 1 / 30 : 1 / 4;
+      else if (m.type === "clone") {                  // (XENOISE) EXPORT: the device as it is, for an offline copy
+        const mem = ex.memory.buffer.slice(0);
+        this.port.postMessage({ type: "clone", mem }, [mem]);
+      } else if (m.type === "rec") {                  // (XENOISE) REC: what plays, kept until REC again
+        if (m.on) { this.rec = []; this.recN = 0; }
+        else if (this.rec) {
+          const l = new Float32Array(this.recN), r = new Float32Array(this.recN);
+          let o = 0;
+          for (const [a, b] of this.rec) { l.set(a, o); r.set(b, o); o += a.length; }
+          this.rec = null;
+          this.port.postMessage({ type: "rec", l, r }, [l.buffer, r.buffer]);
+        }
+      }
     }
 
     publish() {
@@ -130,6 +143,10 @@ if (typeof registerProcessor === "function") {
       this.frames += n;
       out[0].set(new Float32Array(ex.memory.buffer, ex.web_out_l(), n));
       if (out[1]) out[1].set(new Float32Array(ex.memory.buffer, ex.web_out_r(), n));
+      if (this.rec && this.recN < 44100 * 600) {      // (REC: ten minutes at most)
+        this.rec.push([out[0].slice(0), (out[1] || out[0]).slice(0)]);
+        this.recN += n;
+      }
       if (currentTime - this.lastFrame >= this.period) {
         this.lastFrame = currentTime;
         this.publish();

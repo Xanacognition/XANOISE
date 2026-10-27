@@ -201,6 +201,7 @@ static void row_fire(void)
         if (!n) continue;
         if (n == NOTE_OFF) { if (TRK_TYPE[t] == TY_SYNTH) xj_release(XS_JT[t]); continue; }
         if (tr->mute || (solo && !tr->solo)) continue;
+        if (!song.loop && (song.x.smute[sq_chainpos & 15u] >> t) & 1u) continue;   /* (XENOISE: SEQ's matrix) */
         prob = tr->chance;
         if (c->fx == FX_G) prob = prob * (c->fv + 1) / 16;
         if (prob < 100 && (int32_t)((xr(&rnd_isr) >> 8) % 100u) >= prob) continue;

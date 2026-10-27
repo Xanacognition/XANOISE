@@ -29,7 +29,7 @@ enum { PG_TRK, PG_SNG, PG_CHD, PG_ENV, PG_LFO, PG_ARR, PG_SND, PG_MST, PG_N, PG_
 static const char *const PG_NAME[PG_ALL] = {"HOM", "SAV", "CHD", "ENV", "LFO", "SEQ", "EDT", "MST", "GEN", "MIX", "ARP"};
 static const char *const PG_HINT[PG_ALL] = {"SELECT ROW, PLAY PADS", "", "WHITE KEYS: CHORDS",
                                             "ENV AGAIN: PAGE 2", "LFO AGAIN: PAGE 2", "SEQ AGAIN: LIVE",
-                                            "EDIT THE SOUND", "SEL GROUP ALG PARAM", "HOLD SAVE: BACK",
+                                            "EDIT THE SOUND", "PRESETS GROUP, ALG PARAM", "HOLD SAVE: BACK",
                                             "ALG TRACK  GLO: BACK", "ARP AGAIN: PAGE 2"};
 static uint32_t tab_of(uint32_t pg) { return pg == PG_GEN ? PG_SNG : pg == PG_MIX ? PG_MST : pg == PG_ARP ? 0xFFu : pg; }
 #define MST_NSUB 4u                             /* (XENOISE) MST's pages: TEMPO, TONE, GROOVE, SYSTEM (GLO steps through them) */
@@ -273,7 +273,7 @@ static int song_load(uint32_t k)
  * sequence, a copy here; SEQ held + OCT- (anywhere), or UNDO's F button, puts it back. The store is written stopped only
  * (an erase stalls the sound): a song replaced while it plays has no undo */
 enum { U_NONE, U_SONG, U_SLOT, U_INSERT, U_OUTSERT, U_CHAIN };
-static uint8_t xu_kind, xu_at, xu_chain[16], xu_nchain;
+static uint8_t xu_kind, xu_at, xu_chain[16], xu_nchain, xu_smute[16];
 static void xu_slot(uint32_t k)               /* slot k as it is, before a change to it */
 {
     if (slot_ok[k]) slot_copy(UNDO_SLOT, k);
@@ -293,6 +293,7 @@ static int xu_song(void)                      /* the song in memory, before it i
 static void xu_chain_take(void)
 {
     memcpy(xu_chain, song.chain, 16);
+    memcpy(xu_smute, song.x.smute, 16);
     xu_nchain = song.nchain;
     xu_kind = U_CHAIN;
 }
@@ -574,6 +575,11 @@ static int knob(uint32_t i, int32_t dd, char *lab, char *val)
             str_cat(lab, "BLACK");
             if (dd) { v = dd > 0 ? v | 16u : v & ~16u; xj_pref_set(v); }
             str_cat(val, jam_nav() ? "TRACKS" : "PLAY");
+        } else if (i == 2u) {                   /* (XENOISE) the MIDI clock: INT, OUT, IN */
+            uint32_t c = (v >> 5) & 3u;
+            str_cat(lab, "CLOCK");
+            if (dd) { c = (uint32_t)clampi((int32_t)c + (dd > 0 ? 1 : -1), 0, 2); xj_pref_set((v & ~0x60u) | c << 5); }
+            str_cat(val, (const char *const[]){"INT", "OUT", "IN", "INT"}[c]);
         } else return 0;
         return 1;
     }
@@ -891,6 +897,7 @@ static void xu_undo(void)                       /* (XENOISE) UNDO: the last chan
         break;
     default:
         memcpy(song.chain, xu_chain, 16);
+        memcpy(song.x.smute, xu_smute, 16);
         song.nchain = xu_nchain;
         if (sq_chainpos >= song.nchain) sq_chainpos = 0;
         if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
@@ -1228,13 +1235,15 @@ static void arr_do(uint32_t i)                  /* (XENOISE) SEQ's K1..K4, asked
     if (i == 1u) { song.chain[at] = arr_clip; toast("PASTED"); }
     else if (i == 2u) {                         /* INSERT: the copy at the slot, the rest moved on */
         if (n >= 16u) return;
-        for (k = n; k > arr_pos && k > 0u; k--) song.chain[k] = song.chain[k - 1u];
+        for (k = n; k > arr_pos && k > 0u; k--) { song.chain[k] = song.chain[k - 1u]; song.x.smute[k] = song.x.smute[k - 1u]; }
         song.chain[arr_pos < n ? arr_pos : n] = arr_clip;
+        song.x.smute[arr_pos < n ? arr_pos : n] = 0;
         song.nchain++;
         toast("INSERTED");
     } else {                                    /* OUTSERT: the slot gone, the rest moved back */
         if (n <= 1u) return;
-        for (k = at; k + 1u < n; k++) song.chain[k] = song.chain[k + 1u];
+        for (k = at; k + 1u < n; k++) { song.chain[k] = song.chain[k + 1u]; song.x.smute[k] = song.x.smute[k + 1u]; }
+        song.x.smute[n - 1u] = 0;
         song.nchain--;
         if (sq_chainpos >= song.nchain) sq_chainpos = 0;
         if (arr_pos >= song.nchain) arr_pos = (uint8_t)(song.nchain - 1u);
@@ -1579,6 +1588,14 @@ static void ui_input(void)
                 else if (bl == (int)BLK_F1) { perf_solo ^= 1u; toast(perf_solo ? "BLACK KEYS SOLO" : "BLACK KEYS MUTE"); }
                 else if (bl == (int)BLK_F1 + 2) sit_set(!sit_on);
                 else if (bl == (int)BLK_F1 + 3) { for (i = 0; i < NT; i++) song.trk[i].mute = song.trk[i].solo = 0; toast("ALL TRACKS ON"); touch(); }
+                continue;
+            }
+            if (bl < (int)NT && page == PG_ARR && !arr_live && arr_pos < song.nchain) {   /* (XENOISE) SEQ: the slot's track in, out */
+                xu_chain_take();
+                song.x.smute[arr_pos & 15u] ^= (uint8_t)(1u << bl);
+                sel_trk = (uint8_t)bl;
+                toast((song.x.smute[arr_pos & 15u] >> bl) & 1u ? "OUT OF THIS PART" : "IN THIS PART");
+                touch();
                 continue;
             }
             if (bl < (int)NT) { sel_trk = (uint8_t)bl; if (page == PG_SND) sub = 0; }
@@ -2046,6 +2063,13 @@ static void draw_arr(void)
             s[2] = 0;
             g_text(x + 36, y + 2, s, play ? C_BG : C_ORANGE, T_CROP | T_BOLD);
             g_text(x + 3, y + 14, SECT_NAME[pt], play ? C_BG : C_TXT, T_CROP);
+            {                                   /* (XENOISE) its tracks: lit in it, dark out of it (black keys 1-6) */
+                uint32_t q;
+                for (q = 0; q < NT; q++) {
+                    int out = (song.x.smute[k] >> q) & 1u;
+                    g_rect(x + 3 + (int32_t)q * 9, y + 25, 7, 2, out ? (play ? g_mix(C_ORANGE, C_BG, 160) : C_INSET) : TRK_COL[q]);
+                }
+            }
         } else {
             g_rect(x, y, 56, 28, C_ROW);
             if (k == n) g_text_c(x + 28, y + 8, "+", C_MUTED, T_CROP);
@@ -2407,16 +2431,43 @@ static void draw_knobs(void)
 }
 #include "xn_vis.c"                             /* (XENOISE) the visualizer */
 #include "xn_pages.c"                           /* (XENOISE) ENV, LFO, ARP, the mixer, PERFORM's knobs */
+/* (XENOISE) PILOT HELP: SEQ held a moment (alone) shows the page's controls, while it is held */
+static int help_on(void) { return (fm1_in.buttons >> BTN_SEQ) & 1u && !seq_used && fm1_ms - seq_down_ms >= 700u; }
+static void draw_help(void)
+{
+    static const char *const H[][7] = {
+        {"HOM  THE TRACKER", "PRESETS  ROW", "ALGO  TRACK (PAST: VIS)", "SELECT  PATTERN", "HOME AGAIN  EDIT THE CELL", "HOLD ARP  NOTE REPEAT", "SEQ + OCT-  UNDO"},
+        {"SAV  THE STORE", "PRESETS  SLOT", "ALGO  KNOB, SELECT TURNS", "K1-K4 ASK: OCT+ YES, - NO", "SAVE AGAIN  PAGE 2, UNDO", "HOLD SAVE  GEN", "OCT+ x1 EMPTY  x4 GENERATE"},
+        {"CHD  THE CHORDS", "PRESETS  CHORD SLOT", "ALGO  TRACK", "SELECT  PROGRESSION", "WHITE KEYS  CHORDS", "F1 WRITE  F2 NEW  F3 UNDO", ""},
+        {"ENV  THE SOUND'S SHAPE", "PRESETS  ROW", "ALGO  TRACK", "K1-K4  ITS STAGES", "ENV AGAIN  PAGE 2", "F2  PLAY IT", ""},
+        {"LFO  THE TRACK'S LFO", "ALGO  TRACK", "K1-K4  RATE WAVE DEPTHS", "LFO AGAIN  PAGE 2", "F4  BACK TO THE SOUND'S", "", ""},
+        {"SEQ  THE SEQUENCE", "PRESETS  SLOT", "SELECT  ITS PATTERN", "K1-K4  COPY PASTE INS OUT", "BLACK 1-6  TRACK IN, OUT", "SEQ AGAIN  LIVE", "OCT+/- ADD, DEL  F4 UNDO"},
+        {"EDT  THE SOUND", "ALGO  TRACK", "SELECT  ITS PRESET", "K1-K4  ITS PARAMETERS", "EDIT AGAIN  NEXT PAGE", "F3 RANDOM  F4 INIT", ""},
+        {"MST  THE SETTINGS", "PRESETS  GROUP", "ALGO  PARAMETER", "SELECT  TURNS IT", "GLO AGAIN  THE MIXER", "", ""},
+        {"GEN  THE NEXT SONG", "PRESETS  GENRE", "ALGO  KNOB, SELECT TURNS", "SAVE  NEXT PAGE", "OCT+  CREATE (OCT+ AGAIN)", "F3 UNDO  F4 ALL AUTO", "HOLD SAVE  SAV"},
+        {"MIX  THE MASTER", "ALGO  TRACK", "SELECT  MASTER VOLUME", "K1-K4  VOL PAN VERB DELAY", "GLO AGAIN  SETTINGS", "", ""},
+        {"ARP  THE TRACK'S ARP", "ALGO  TRACK", "K1-K4  MODE RATE OCT GATE", "ARP AGAIN  PAGE 2", "F2 HOLD  F4 OFF", "", ""},
+        {"FX  PERFORM", "PRESETS  ROW: FX, TRACKS", "ALGO  ALONG IT", "SELECT  ON, OFF", "K FILTER CHOP STEP WASH", "WHITE KEYS FX  BLACK MUTE", "FX AGAIN  CLOSE"},
+        {"VIS  THE VISUALIZER", "PLAY  ENGAGE", "HOLD ARP  ALL RANGE", "PRESETS  LOOK LEFT", "ALGO  LOOK RIGHT", "HOME  DISENGAGE", "ALGO LEFT  THE TRACKER"}};
+    uint32_t k, w = fx_on() ? 11u : page == PG_TRK && vis_on ? 12u : page < PG_ALL ? page : 0u;
+    int32_t y = TOP_H + 8;
+    g_rect(6, TOP_H + 4, 228, 170, C_BG);
+    g_frame(6, TOP_H + 4, 228, 170, C_BLUE);
+    g_text(14, y, "PILOT // ", C_MUTED, T_CROP);
+    g_text(86, y, H[w][0], C_ORANGE, T_CROP | T_BOLD);
+    for (k = 1; k < 7u; k++) if (H[w][k][0]) g_text(14, y + 6 + (int32_t)k * 20, H[w][k], k & 1u ? C_TXT : g_mix(C_BG, C_TXT, 200), T_CROP);
+}
 static void draw_all(void)
 {
     g_rect(0, 0, 240, 240, C_BG);
     draw_top();
-    if (!fx_on() && page == PG_TRK && vis_on) { vis_draw(); return; }
+    if (!fx_on() && page == PG_TRK && vis_on) { vis_draw(); if (help_on()) draw_help(); return; }
     if (!fx_on() && page == PG_TRK && !hom_edit) {   /* (XENOISE) HOM plain: the grid, the info line, no knobs */
         draw_grid();
         info_y = 222;
         draw_info();
         info_y = INFO_Y;
+        if (help_on()) draw_help();
         return;
     }
     if (fx_on()) draw_perform();
@@ -2451,6 +2502,7 @@ static void draw_all(void)
     }
     draw_info();
     draw_knobs();
+    if (help_on()) draw_help();
 }
 
 /* ================================================================ the main loop */
@@ -2719,4 +2771,23 @@ WASM_EXPORT("kawa_store_loaded") void kawa_store_loaded(void)   /* the page put 
     if (!song_load(0)) { genre_pick = song.genre; prog_sel = song.prog; cur_row = 0; }
     g_force = 1;
 }
+#endif
+#if defined(__EMSCRIPTEN__)                    /* (felucca_web.c exports them) */
+/* (XENOISE) the emulator page's EXPORT: a copy of the running device (its whole memory) plays the sequence from its
+ * first slot, once, offline; this says how many frames that takes (steps x 15 s / BPM at 44.1 kHz), then STOP lets
+ * the tail ring out */
+static uint32_t xn_export_song(void)
+{
+    uint32_t k, n = 0, bpm = song.bpm ? song.bpm : 120u;
+    song.loop = 0;
+    sq_start = 0;
+    sit_on = 0;
+    for (k = 0; k < (song.nchain ? song.nchain : 1u); k++) {
+        uint32_t pi = (song.nchain ? song.chain[k] : song.cur) % NPAT, L = song.pat[pi].len ? song.pat[pi].len : 16u;
+        n += (uint32_t)(((uint64_t)steps_of(L) * 661500u + bpm / 2u) / bpm);
+    }
+    sq_req = 1;
+    return n;
+}
+static void xn_export_stop(void) { sq_req = 2; }
 #endif

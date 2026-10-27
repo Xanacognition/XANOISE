@@ -352,6 +352,7 @@ static void form_set(uint32_t f)
     f %= WB_NFORM;
     for (i = 0; i < FORM_LEN[f]; i++) song.chain[i] = FORM[f][i];
     song.nchain = FORM_LEN[f];
+    memset(song.x.smute, 0, sizeof song.x.smute);   /* (XENOISE: every track in every part) */
 }
 static int form_of(void)                        /* the form the chain is (-1: the user's own) */
 {
@@ -393,6 +394,7 @@ static void form_shuffle(void)
     if (n > 16u) { form_set(0); return; }
     for (i = 0; i < n; i++) song.chain[i] = c[i];
     song.nchain = (uint8_t)n;
+    memset(song.x.smute, 0, sizeof song.x.smute);
 }
 /* the recipe each part is written by (gen_pattern's v): the bridge a breakdown or half-time, the song decides */
 static uint32_t sect_v(uint32_t pi)

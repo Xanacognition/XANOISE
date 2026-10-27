@@ -410,8 +410,9 @@ EXPORT void web_master(uint32_t v) { web_master_adc = v > 1023u ? 1023u : v; }
 /* a channel message from Web MIDI, as a USB-MIDI packet arrives (usb.c midi_enqueue): 0 = the ring was full */
 EXPORT uint32_t web_midi(uint32_t status, uint32_t d1, uint32_t d2)
 {
-    if (status < 0x80u || status >= 0xF0u)
+    if (status < 0x80u || (status >= 0xF0u && status < 0xF8u))
         return 1;
+    if (status >= 0xF8u) return (uint32_t)midi_enqueue(0x0Fu | status << 8, 1);   /* (XENOISE: the clock, START, STOP) */
     return (uint32_t)midi_enqueue((status >> 4) | status << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24, 1);
 }
 
@@ -599,3 +600,7 @@ EXPORT uint32_t web_song_play(void) { return chain_prepare(); }   /* 0 = the son
 EXPORT void web_play(uint32_t on) { transport_req = (uint8_t)(on ? 1u : 2u); }
 EXPORT uint32_t web_beat_samples(void) { return beat_samples(); }
 EXPORT uint32_t web_trk_live(void) { return trk_live; }
+#if defined(__EMSCRIPTEN__)
+EXPORT uint32_t web_xn_export(void) { return xn_export_song(); }   /* (XENOISE) EXPORT: the sequence once, offline */
+EXPORT void web_xn_export_stop(void) { xn_export_stop(); }
+#endif

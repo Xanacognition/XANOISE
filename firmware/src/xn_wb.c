@@ -152,7 +152,8 @@ static void xj_tone(uint32_t jt, int32_t cut, int32_t glide)   /* the part's fil
  * settings_persist.c, "the layers seen", unused since 0.9.5; 0 in every older setting = each one's default), saved
  * with them (settings_save: written by settings_poll when it changed):
  *   bits 0-3  the theme (wb_ui.c WB_THEMES: 0 COMBAT, 1 CLASSIC, KNF's covers after them)
- *   bit 4     HOM's black keys: 0 play (HOME held: the tracks and F1..F4), 1 the tracks and F1..F4 as WND-1 had them */
+ *   bit 4     HOM's black keys: 0 play (HOME held: the tracks and F1..F4), 1 the tracks and F1..F4 as WND-1 had them
+ *   bits 5-6  the MIDI clock: 0 INT, 1 OUT, 2 IN */
 #define xn_prefs (favorites.factory[15][31])
 static uint32_t xj_pref(void) { return xn_prefs; }
 static int32_t xj_sin(uint32_t a16) { return bg_sin(a16); }   /* sine of a 16-bit angle, Q15 (the visualizer) */
@@ -479,9 +480,37 @@ static void wb_init(void)
     xs_mix();
     wb_ready = 1;
 }
+/* (XENOISE) MIDI clock, SYSTEM's CLOCK (settings byte bits 5-6): INT none; OUT 24 a beat at the song's tempo (JIANT's
+ * sender, seq.c mo_block) and START / STOP with PLAY; IN follows: its tempo (a beat of 24 pulses), START (from the first
+ * slot), CONTINUE, STOP. In and out go over USB and the TRS jack as JIANT's MIDI does. The tempo follows; the rows run
+ * on the FM-1's own clock between (no pulse-by-pulse lock) */
+static volatile uint8_t xn_clk_mode, xn_clk_go, xn_clk_bpm;
+static uint32_t xn_clk_t0, xn_clk_n;
+static void xn_clock_in(uint32_t status, uint32_t ms)   /* (seq.c, the audio interrupt: a realtime byte in) */
+{
+    if (xn_clk_mode != 2u) return;
+    if (status == 0xF8u) {
+        if (!xn_clk_n) xn_clk_t0 = ms;
+        if (++xn_clk_n > 24u) {
+            uint32_t dt = ms - xn_clk_t0;
+            if (dt >= 250u && dt <= 1500u) xn_clk_bpm = (uint8_t)((60000u + dt / 2u) / dt);
+            xn_clk_n = 1;
+            xn_clk_t0 = ms;
+        }
+    } else if (status == 0xFAu) xn_clk_go = 1;     /* START */
+    else if (status == 0xFBu) xn_clk_go = 3;      /* CONTINUE */
+    else if (status == 0xFCu) xn_clk_go = 2;      /* STOP */
+}
 static void wb_frame(void)                       /* the main loop: WND-1's panel, screen and LEDs, then the sound */
 {
     static int16_t sc[120];
+    xn_clk_mode = (uint8_t)((xj_pref() >> 5) & 3u);   /* (XENOISE) the MIDI clock */
+    mo_lvl = xn_clk_mode == 1u ? MO_CLOCK : MO_KEYS;
+    if (xn_clk_mode == 2u) {
+        uint8_t go = xn_clk_go;
+        if (go) { xn_clk_go = 0; if (go == 1u) sq_start = 0; sq_req = go == 2u ? 2u : 1u; }
+        if (xn_clk_bpm >= 40u && xn_clk_bpm <= 240u && xn_clk_bpm != song.bpm) song.bpm = xn_clk_bpm;
+    }
     app_step();
     xs_sound();
     xs_mix();
@@ -492,7 +521,13 @@ static void wb_frame(void)                       /* the main loop: WND-1's panel
 }
 static void wb_isr(uint32_t n)                   /* the audio interrupt, between two blocks (fx.c events_block) */
 {
+    static uint8_t was;
     if (wb_ready) wb_block(n);
+    if (xn_clk_mode == 1u && sq_play != was) {    /* (CLOCK OUT: START on the pulse's edge, STOP) */
+        if (sq_play) { mo_pulse_acc = 0; mo_send(0xFAu, 0, 0); }
+        else mo_send(0xFCu, 0, 0);
+    }
+    was = sq_play;
 }
 
 #define WB_NAMES_OFF

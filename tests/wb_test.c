@@ -254,6 +254,11 @@ int main(void)
         check("  OCT+: a slot added", wb_song.nchain == n0 + 1u);
         tap(B_OCTDN);
         check("  OCT-: the last deleted", wb_song.nchain == n0);
+        arr_pos = 1;
+        web_keys(1u << KEY_OF_BLACK[3]); run_ms(60); web_keys(0); run_ms(60);
+        check("  black 4: BAS out of slot 2 (the matrix)", (wb_song.x.smute[1] >> T_BAS) & 1u);
+        arr_fn(3);
+        check("  F4 UNDO: back in", !((wb_song.x.smute[1] >> T_BAS) & 1u));
         tap(B_SEQ);
         check("  SEQ again: LIVE", arr_live);
         web_keys(1u << KEY_OF_WHITE[2]); run_ms(80); web_keys(0); run_ms(80);
@@ -344,6 +349,26 @@ int main(void)
         ng_prog = ng_cspace = ng_bpm = ng_key = 0;
         tap(B_HOME);
     }
+    {   /* (XENOISE) MIDI clock IN: START plays, the pulses set the tempo (20 ms apart: 125 BPM), STOP stops; OUT: JIANT's sender on */
+        uint32_t k, b0 = wb_song.bpm;
+        xn_prefs = (uint8_t)((xn_prefs & ~0x60u) | 2u << 5);
+        run_ms(40);
+        web_midi(0xFA, 0, 0); run_ms(40);
+        for (k = 0; k < 60u; k++) { web_midi(0xF8, 0, 0); run_ms(20); }
+        check("MIDI CLOCK IN: START plays, the tempo followed (125)", sq_play && wb_song.bpm == 125u);
+        web_midi(0xFC, 0, 0); run_ms(40);
+        check("  STOP stops", !sq_play);
+        xn_prefs = (uint8_t)((xn_prefs & ~0x60u) | 1u << 5);
+        run_ms(40);
+        check("  CLOCK OUT: JIANT's clock sender on", mo_lvl == MO_CLOCK);
+        xn_prefs = (uint8_t)(xn_prefs & ~0x60u);
+        run_ms(40);
+        wb_song.bpm = (uint8_t)b0;
+    }
+    web_buttons(1u << B_SEQ); run_ms(800);
+    check("SEQ held: the PILOT's help over the page", help_on() && page == PG_TRK);
+    web_buttons(0); run_ms(60);
+    check("  let go: gone, the page as it was", !help_on() && page == PG_TRK);
     web_buttons(1u << B_ARP); run_ms(600); web_buttons(0); run_ms(60);
     check("ARP held on HOM: NOTE REPEAT on, the page stays", arp_on() && page == PG_TRK);
     web_buttons(1u << B_ARP); run_ms(600); web_buttons(0); run_ms(60);

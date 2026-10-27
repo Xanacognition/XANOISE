@@ -55,7 +55,8 @@ enum { RL_BRK, RL_BAS, RL_KEY, RL_SYN, RL_BRK2, RL_BAS2, RL_KEY2, RL_SYN2, RL_K,
  * engines (set 0: the sound's own, as its preset has it) */
 typedef struct { int8_t set, rate, wave, fade, pit, flt, shp, amp; } wb_lfo_t;
 typedef struct { uint8_t set, mode, rate, oct, gate, swing, prob, hold, order, pad[3]; } wb_arp_t;
-typedef struct { uint32_t magic; wb_lfo_t lfo[NT]; wb_arp_t arp[NT]; uint8_t bpart, spare[31]; } song_ext_t;   /* bpart: the patterns on the B loop's chords */
+typedef struct { uint32_t magic; wb_lfo_t lfo[NT]; wb_arp_t arp[NT]; uint8_t bpart, smute[16], spare[15]; } song_ext_t;   /* bpart: the patterns on the B loop's chords; smute: a sequence
+                                                 * slot's tracks left out (a bit a track: SEQ's matrix) */
 #define SONG_EXT_MAGIC 0x31545845u              /* "EXT1" */
 typedef struct {
     uint32_t magic, version;

@@ -1142,6 +1142,7 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 #endif
 #if XN_WB
 static void wb_isr(uint32_t n);
+static void xn_clock_in(uint32_t status, uint32_t ms);   /* (XENOISE) MIDI clock in, for Wonderblue's sequencer (xn_wb.c) */
 #endif
 static void keyboard_block(void)
 {
@@ -2409,6 +2410,7 @@ static void events_block(uint32_t n)
         uint32_t source = midi_in_source[at] ? midi_in_source[at] : 1u, ms = midi_in_ms[at];
         mi_r++;
         if (status >= 0xF8u) {
+            if (XN_WB) xn_clock_in(status, ms);       /* (XENOISE: SYSTEM's CLOCK IN) */
             if (clock_mode == source) {
                 if (status == 0xF8u)
                     midi_clock_pulse(ms);
