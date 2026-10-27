@@ -603,6 +603,11 @@ EXPORT uint32_t web_trk_live(void) { return trk_live; }
 #if defined(__EMSCRIPTEN__)
 EXPORT uint32_t web_xn_export(uint32_t solo) { return xn_export_song(solo); }   /* (XENOISE) EXPORT: the sequence once, offline (solo: a stem) */
 EXPORT const char *web_xn_track(uint32_t t) { return xn_track_name(t); }
+EXPORT uint8_t *web_xn_song_buf(void) { return xn_song_buf(); }   /* (XENOISE) the Dock: a song in, a MIDI file out */
+EXPORT uint32_t web_xn_song_size(void) { return xn_song_size(); }
+EXPORT uint32_t web_xn_song_took(void) { return xn_song_took(); }
+EXPORT uint8_t *web_xn_midi(void) { return wb_midi(); }
+EXPORT uint32_t web_xn_midi_size(void) { return wb_midi_size(); }
 EXPORT void web_lev_mode(uint32_t m) { lev_rec_mode = (uint8_t)m; lev_rec_at = 0; if (m == 1u) lev_rec_n = 0; }   /* (XENOISE: stems) */
 EXPORT int32_t *web_lev_rec(void) { return &lev_rec[0][0]; }
 EXPORT uint32_t web_lev_n(void) { return lev_rec_n; }

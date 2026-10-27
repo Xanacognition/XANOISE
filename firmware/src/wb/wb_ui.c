@@ -269,6 +269,39 @@ static int song_load(uint32_t k)
     return 0;
 }
 
+/* (XENOISE) the Dock's EXPORT (editor SysEx, editor.c): the songs leave over USB-MIDI to be rendered, stemmed or
+ * turned into MIDI in the browser.
+ *   96 XN_LIST                -> the slots: their count, then each: held (0/1), its name (0-terminated)
+ *   97 XN_GET slot chunk(14b) -> slot, chunk, the song's size (21 bits), the bytes here (14 bits), each byte as two
+ *                                nibbles; slot 127: the song in memory now. 256 bytes a chunk */
+#ifdef ED_HDR0                                  /* (editor.c in this build: the FM-1's) */
+static int xn_ed_handle(uint32_t cmd, const uint8_t *a, uint32_t na)
+{
+    uint32_t k, i;
+    if (cmd == 96u) {
+        slots_scan();
+        ed_b(NSLOT);
+        for (k = 0; k < NSLOT; k++) { ed_b(slot_ok[k] ? 1u : 0u); ed_str(slot_name[k], 15); }
+        return 1;
+    }
+    if (cmd == 97u && na == 3u) {
+        static uint8_t buf[256];
+        uint32_t c = a[1] | (uint32_t)a[2] << 7, off = c * 256u, size = sizeof(song_t), n = 0;
+        k = a[0];
+        ed_b(k); ed_b(a[1]); ed_b(a[2]);
+        ed_b(size); ed_b(size >> 7); ed_b(size >> 14);
+        if (off < size && (k == 127u || (k < NSLOT && slot_ok[k]))) {
+            n = size - off < 256u ? size - off : 256u;
+            if (k == 127u) memcpy(buf, (const uint8_t *)&song + off, n);
+            else if (store_read(k, off, buf, n)) n = 0;
+        }
+        ed_b(n); ed_b(n >> 7);
+        for (i = 0; i < n; i++) { ed_b(buf[i] >> 4); ed_b(buf[i] & 15u); }
+        return 1;
+    }
+    return 0;
+}
+#endif
 /* (XENOISE) UNDO: one change back. What the change took goes to UNDO's slot (a song, or a slot's song) or, for the
  * sequence, a copy here; SEQ held + OCT- (anywhere), or UNDO's F button, puts it back. The store is written stopped only
  * (an erase stalls the sound): a song replaced while it plays has no undo */
@@ -2638,6 +2671,11 @@ WASM_EXPORT("wb_export") uint32_t wb_export(uint32_t what, uint32_t solo)
     sq_req = 1;
     return n;
 }
+#endif
+#if defined(KAWA_WASM) || defined(__EMSCRIPTEN__)   /* (XENOISE: the MIDI file for the emulator and the Dock too) */
+#ifndef WASM_EXPORT
+#define WASM_EXPORT(name) static
+#endif
 /* ---- for Renoise and any DAW: the song as a standard MIDI file (format 1, 96 ticks a beat, a row a 16th), and each
  * track's sound as a sample. The arrangement in order (or the pattern looped), the meter and the swing as played;
  * RETRIG as its hits, DELAY as its offset, chords as their notes. BRK: slice k on note 61 + k (Renoise's slices go
@@ -2751,6 +2789,8 @@ WASM_EXPORT("wb_midi") uint8_t *wb_midi(void)
     return w_midi;
 }
 WASM_EXPORT("wb_midi_size") uint32_t wb_midi_size(void) { return w_midi_n; }
+#endif
+#if defined(KAWA_WASM)
 /* a sample of a track's sound: one hit (dry: no sends, no tape, no crush, no pump; synths one note, no chord) */
 WASM_EXPORT("wb_hit") void wb_hit(uint32_t t, uint32_t note)
 {
@@ -2807,6 +2847,21 @@ static uint32_t xn_export_song(uint32_t solo)   /* solo: 0 the mix, 1 + t that t
     return n;
 }
 static void xn_export_stop(void) { sq_req = 2; }
+static uint8_t *xn_song_buf(void) { return (uint8_t *)&song; }
+static uint32_t xn_song_size(void) { return sizeof song; }
+static uint32_t xn_song_took(void)               /* (XENOISE) a song written in from outside (the Dock): 0 = taken */
+{
+    if (song.magic != SONG_MAGIC || song.version != SONG_VERSION) return 1;
+    if (song.x.magic != SONG_EXT_MAGIC) { memset(&song.x, 0, sizeof song.x); song.x.magic = SONG_EXT_MAGIC; }
+    sq_req = 2;
+    song.cur %= NPAT;
+    if (!song.nchain || song.nchain > 16u) { song.nchain = 1; song.chain[0] = 0; }
+    seed_of = 0xFF;
+    sit_mute = 0;
+    cur_row = 0;
+    g_force = 1;
+    return 0;
+}
 static const char *xn_track_name(uint32_t t) { return TRK_ID[t % NT]; }
 static const char *xn_song_name(void) { return song.name; }
 #endif

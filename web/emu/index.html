@@ -74,6 +74,8 @@ footer small { font-size: 11px; opacity: .8; }
 .xnbar button { font: inherit; padding: 6px 14px; background: var(--part); color: var(--label); border: 1px solid var(--edge); cursor: pointer; }
 .xnbar button:disabled { opacity: .4; cursor: default; }
 .xnbar button.on { background: #c0392b; color: #fff; }
+.xnbar .xload { font: inherit; padding: 6px 14px; background: var(--part); color: var(--label); border: 1px solid var(--edge); cursor: pointer; }
+.xnbar .xload input { width: 0; height: 0; opacity: 0; position: absolute; }
 </style>
 </head>
 <body>
@@ -84,7 +86,7 @@ footer small { font-size: 11px; opacity: .8; }
   <div class="start" id="start"><button id="go" type="button">Switch on</button><p id="status" hidden></p></div>
 </div>
 
-<p class="xnbar"><button id="xexp" type="button" disabled>Export song (WAV)</button> <button id="xstems" type="button" disabled>Export stems (ZIP)</button> <button id="xrec" type="button" disabled>● Rec</button> <span id="xmsg"></span></p>
+<p class="xnbar"><button id="xexp" type="button" disabled>Export song (WAV)</button> <button id="xstems" type="button" disabled>Export stems (ZIP)</button> <button id="xrec" type="button" disabled>● Rec</button> <button id="xmidi" type="button" disabled>MIDI</button> <button id="xsave" type="button" disabled>Save song</button> <label class="xload" for="xload">Load song <input id="xload" type="file" accept=".xen" disabled></label> <span id="xmsg"></span></p>
 
 <p class="keys">
   <span><kbd>Z</kbd>–<kbd>'</kbd> <kbd>Q</kbd>–<kbd>O</kbd> keys</span>
@@ -493,6 +495,10 @@ function zipMany(files) {                                  // [{name, data}], st
 const zipOne = (name, data) => zipMany([{ name, data }]);
 async function saveBlob(name, blob, type) {
   const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(() => null) : null;
+  if (dl && !/\.zip$/i.test(name)) {                       // (in an artifact: .wav .mid .xen are not allowed, a .zip holding them is)
+    blob = zipMany([{ name, data: new Uint8Array(await blob.arrayBuffer()) }]);
+    name += ".zip";
+  }
   if (dl) {
     try { await dl.save({ filename: name, data: blob }); xmsg("Saved " + name); }
     catch (e) { xmsg(e && e.code === "declined" ? "Not saved." : "Could not save here (" + (e && e.code || e) + ")."); }
@@ -506,9 +512,7 @@ async function saveBlob(name, blob, type) {
   xmsg("Saved " + name);
 }
 async function saveWav(base, l, r) {
-  const wav = wavStereo(l, r), inArtifact = !!(window.claude && window.claude.use && await window.claude.use("downloads").catch(() => null));
-  if (inArtifact) await saveBlob(base + ".zip", zipOne(base + ".wav", wav));   // (in an artifact: .wav is not allowed, a .zip holding it is)
-  else await saveBlob(base + ".wav", new Blob([wav]), "audio/wav");
+  await saveBlob(base + ".wav", new Blob([wavStereo(l, r)]), "audio/wav");
 }
 const cstr = (ex, p) => { const m = new Uint8Array(ex.memory.buffer); let e = p; while (m[e]) e++; return new TextDecoder().decode(m.subarray(p, e)); };
 /* an offline copy of the device (its whole memory, as it was) plays the sequence once: the mix (solo 0) or one track
@@ -568,7 +572,28 @@ document.getElementById("xrec").addEventListener("click", (e) => {
   xmsg(recOn ? "Recording what plays…" : "Writing the recording…");
   send({ type: "rec", on: recOn });
 });
+let songName = "xenoise";
+document.getElementById("xmidi").addEventListener("click", () => { xmsg("Writing the MIDI file…"); send({ type: "song", midi: true }); });
+document.getElementById("xsave").addEventListener("click", () => send({ type: "song" }));
+document.getElementById("xload").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  songName = safeName(f.name.replace(/\.xen$/i, ""));
+  const b = await f.arrayBuffer();
+  send({ type: "song", put: b });
+  e.target.value = "";
+});
 function xnMessage(m) {
+  if (m.type === "song") {
+    if (m.put) xmsg(m.ok ? "Song loaded." : "That file isn't a XENOISE song for this build.");
+    else if (m.midi) saveBlob(songName + ".mid", new Blob([m.midi]));
+    else {
+      const b = new Uint8Array(m.bytes);
+      songName = safeName(new TextDecoder().decode(b.subarray(8, 23)).replace(/\0.*/s, ""));
+      saveBlob(songName + ".xen", new Blob([b]));
+    }
+    return;
+  }
   if (m.type === "clone") (wantStems ? exportStems(m.mem) : exportSong(m.mem))
     .catch((err) => xmsg("Export failed: " + (err && err.message || err))).finally(() => exportBtns(true));
   else if (m.type === "rec") saveWav("xenoise-rec", m.l, m.r);
@@ -589,7 +614,7 @@ async function switchOn() {
     await new Promise((res, rej) => {
       node.port.onmessage = (e) => {
         const m = e.data;
-        if (m.type === "clone" || m.type === "rec") { xnMessage(m); return; }
+        if (m.type === "clone" || m.type === "rec" || m.type === "song") { xnMessage(m); return; }
         if (m.type === "ready") res();
         else if (m.type === "error") rej(new Error(m.message));
         else if (m.type === "frame") {
@@ -607,7 +632,7 @@ async function switchOn() {
     await ac.resume();
     document.getElementById("start").hidden = true;
     go.textContent = "On";
-    document.getElementById("xexp").disabled = document.getElementById("xstems").disabled = document.getElementById("xrec").disabled = false;
+    for (const id of ["xexp", "xstems", "xrec", "xmidi", "xsave", "xload"]) document.getElementById(id).disabled = false;
     if (ac.sampleRate !== 44100) console.warn(`JIANT: the browser plays at ${ac.sampleRate} Hz, the pitch is off by ${(1200 * Math.log2(ac.sampleRate / 44100)).toFixed(0)} cents.`);
     syncButtons();
     syncKeys();

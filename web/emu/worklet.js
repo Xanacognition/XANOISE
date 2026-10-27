@@ -72,7 +72,20 @@ if (typeof registerProcessor === "function") {
       else if (m.type === "master") ex.web_master(m.value | 0);
       else if (m.type === "midi") ex.web_midi(m.data[0] | 0, m.data[1] | 0, m.data[2] | 0);
       else if (m.type === "visible") this.period = m.on ? 1 / 30 : 1 / 4;
-      else if (m.type === "clone") {                  // (XENOISE) EXPORT: the device as it is, for an offline copy
+      else if (m.type === "song") {                   // (XENOISE) the song: out (.xen), in, or as a MIDI file
+        if (m.put) {
+          const b = new Uint8Array(m.put);
+          let ok = b.length === ex.web_xn_song_size();
+          if (ok) { new Uint8Array(ex.memory.buffer, ex.web_xn_song_buf(), b.length).set(b); ok = !ex.web_xn_song_took(); }
+          this.port.postMessage({ type: "song", put: true, ok });
+        } else if (m.midi) {
+          const d = new Uint8Array(ex.memory.buffer, ex.web_xn_midi(), ex.web_xn_midi_size()).slice();
+          this.port.postMessage({ type: "song", midi: d.buffer }, [d.buffer]);
+        } else {
+          const d = new Uint8Array(ex.memory.buffer, ex.web_xn_song_buf(), ex.web_xn_song_size()).slice();
+          this.port.postMessage({ type: "song", bytes: d.buffer }, [d.buffer]);
+        }
+      } else if (m.type === "clone") {                  // (XENOISE) EXPORT: the device as it is, for an offline copy
         const mem = ex.memory.buffer.slice(0);
         this.port.postMessage({ type: "clone", mem }, [mem]);
       } else if (m.type === "rec") {                  // (XENOISE) REC: what plays, kept until REC again

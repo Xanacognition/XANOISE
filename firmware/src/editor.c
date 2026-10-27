@@ -21,6 +21,9 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_LYRIC,                                                                /* (JIANT 0.8.5) VOICE's lyric */
        ED_MOTION = 64, ED_BACKUP_LIST, ED_BACKUP_GET, ED_BACKUP_PUT };                              /* v6: song chain */
 
+#if defined(XN_WB) && XN_WB
+static int xn_ed_handle(uint32_t cmd, const uint8_t *a, uint32_t na);   /* (XENOISE) the Dock's EXPORT: 96 XN_LIST, 97 XN_GET */
+#endif
 static uint8_t ed_out[600];
 static uint32_t ed_n;
 
@@ -388,6 +391,9 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (ed_backup_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
+#if defined(XN_WB) && XN_WB
+    if (xn_ed_handle(cmd, a, na)) { ed_send(); return; }
+#endif
     switch (cmd) {
     case ED_MOTION: {
         track_t *t = &trk[a[0]]; uint32_t rc = 0;
