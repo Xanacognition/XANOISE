@@ -59,7 +59,7 @@ jobs:
           cp build/felucca.fwsc xenoise.fwsc
           gh release view xenoise-latest >/dev/null 2>&1 || gh release create xenoise-latest --prerelease --target "$GITHUB_SHA" \
             --title "XENOISE (latest build of the xanoise branch)" \
-            --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with JIANT's web installer (Use a local file) or tools/fm1_install.py."
+            --notes "JIANT FM with the Wonderblue tracker interface. Untested builds: install with the Pilot's Dock (https://xanacognition.github.io/XANOISE/) or tools/fm1_install.py."
           gh release upload xenoise-latest xenoise.fwsc size_map.txt --clobber
       - name: host tests (JIANT's suite and the tracker's, tests/run_tests.sh)
         run: |
@@ -79,7 +79,8 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/site
-  # (XENOISE) the site: needs Settings > Pages > Source "GitHub Actions" once; until then this job fails alone
+  # (XENOISE) the site: needs Settings > Pages > Source "GitHub Actions" once; until then this job fails alone. No
+  # "environment: github-pages": its branch rule lets only the default branch deploy, and XENOISE builds on xanoise
   pages:
     needs: build
     runs-on: ubuntu-24.04
@@ -87,9 +88,6 @@ jobs:
     permissions:
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
