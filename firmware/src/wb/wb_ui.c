@@ -2528,10 +2528,8 @@ static const char *perf_fn(uint32_t i) { return (const char *const[]){perf_solo 
 static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"FORM", song.loop ? "SEQ" : "LOOP", "SHUFFLE", "UNDO"}[i]; }
 static void knob_badge(int32_t x, int32_t y, uint32_t i)   /* (XENOISE) the knob's number in a disc of its colour (12 px) */
 {
-    static const uint8_t HW[12] = {3, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5, 3};   /* the disc's half widths, a row each */
     char d[2] = {(char)('1' + i), 0};
-    int32_t r;
-    for (r = 0; r < 12; r++) g_rect(x + 6 - HW[r], y + r, HW[r] * 2, 1, KNOB_C[i]);
+    g_disc((x + 6) * 16, (y + 6) * 16, 6 * 16, KNOB_C[i]);   /* (smooth edged) */
     g_text(x + 2, y, d, C_BG, T_CROP | T_BOLD);
 }
 static void draw_knobs(void)
