@@ -2403,9 +2403,9 @@ static void draw_mst(void)
                 lab[cw / 8 > 15 ? 15 : cw / 8] = 0;
                 val[cw / 8 > 15 ? 15 : cw / 8] = 0;
                 if (on) g_rect(x, y + 4, 2, 26, KNOB_C[i]);
-                if (on && i == pilot_col) g_frame(x - 1, y + 2, cw - 2, 30, C_TXT);   /* (ALGORITHM's: PRESETS turns it) */
-                g_text(x + 4, y + 3, lab, C_MUTED, T_CROP);
-                g_text(x + 4, y + 18, val, on ? C_TXT : g_mix(C_BG, C_TXT, 170), T_CROP);
+                if (on && i == pilot_col) g_frame(x - 2, y + 2, cw - 1, 30, C_TXT);   /* (ALGORITHM's: PRESETS turns it) */
+                g_text_a(x + 5, y + 3, lab, C_MUTED, T_CROP, 7);
+                g_text_a(x + 5, y + 18, val, on ? C_TXT : g_mix(C_BG, C_TXT, 170), T_CROP, 7);
             }
         }
         sub = (uint8_t)s0;
@@ -2526,11 +2526,11 @@ static void draw_info(void)
 }
 static const char *perf_fn(uint32_t i) { return (const char *const[]){perf_solo ? "SOLO" : "MUTE", "", sit_on ? "SIT OFF" : "SIT", "ALL ON"}[i]; }
 static const char *arr_fn_label(uint32_t i) { return (const char *const[]){"FORM", song.loop ? "SEQ" : "LOOP", "SHUFFLE", "UNDO"}[i]; }
-static void knob_badge(int32_t x, int32_t y, uint32_t i)   /* (XENOISE) the knob's number in a disc of its colour (12 px) */
+static void knob_badge(int32_t x, int32_t y, uint32_t i)   /* (XENOISE) the knob's number in a disc of its colour (x+3..x+14) */
 {
     char d[2] = {(char)('1' + i), 0};
-    g_disc((x + 6) * 16, (y + 6) * 16, 6 * 16, KNOB_C[i]);   /* (smooth edged) */
-    g_text(x + 2, y, d, C_BG, T_CROP | T_BOLD);
+    g_disc((x + 8) * 16 + 8, (y + 6) * 16 - 8, 5 * 16 + 4, KNOB_C[i]);   /* (smooth edged, 10.5 px, the digit centred, */
+    g_text(x + 5, y, d, C_BG, T_CROP | T_BOLD);                         /* clear of the frame and of the label) */
 }
 static void draw_knobs(void)
 {
@@ -2544,10 +2544,11 @@ static void draw_knobs(void)
             val[7] = 0;
             knob_badge(x, KNOB_Y + 2, i);
             if (i == pilot_col && !fx_on() && (page == PG_MST || page == PG_SNG || (page == PG_GEN && sub < 2u)))
-                g_frame(x, KNOB_Y, 60, 30, C_TXT);   /* (the PILOT's: SELECT turns it) */
-            g_text(x + 13, KNOB_Y + 2, lab, C_TXT, T_CROP);
-            inset(x + 2, KNOB_Y + 15, 56, 13);
-            g_text(x + 4, KNOB_Y + 15, val, C_NOTE, T_CROP);
+                g_frame(x + 1, KNOB_Y, 58, 30, C_TXT);   /* (the PILOT's: SELECT turns it) */
+            lab[6] = 0;                         /* (6 at 7 px: clear of the next knob) */
+            g_text_a(x + 16, KNOB_Y + 2, lab, C_TXT, T_CROP, 7);
+            inset(x + 3, KNOB_Y + 15, 54, 13);
+            g_text_a(x + 5, KNOB_Y + 15, val, C_NOTE, T_CROP, 7);
         }
         memcpy(knob_lab[i], lab, 16);
         f = fx_on() ? perf_fn(i) : page == PG_ARR ? arr_fn_label(i) : fn_label(i, fb);

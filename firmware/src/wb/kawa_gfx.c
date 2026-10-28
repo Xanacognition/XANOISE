@@ -150,12 +150,12 @@ static void g_font_set(uint32_t k) { g_font = (uint8_t)(k < NFONT ? k : 0u); }
  * face (XENOISE: it was the strokes drawn twice, a pixel apart); the glyph's grey levels blend into what is under it.
  * Returns the x after the text. */
 enum { T_CROP = 1, T_BOLD = 2 };
-static int32_t g_text(int32_t x, int32_t y, const char *s, uint16_t c, uint32_t mode)
+static int32_t g_text_a(int32_t x, int32_t y, const char *s, uint16_t c, uint32_t mode, int32_t adv)
 {
     const felucca_font_t *f = mode & T_BOLD ? g_fsb : g_fs;
     int32_t r0 = mode & T_CROP ? 2 : 0, r1 = mode & T_CROP ? 14 : 16;
     if (!g_vis(y, r1 - r0)) {
-        while (*s) { x += 8; s++; }
+        while (*s) { x += adv; s++; }
         return x;
     }
     for (; *s; s++) {
@@ -178,10 +178,12 @@ static int32_t g_text(int32_t x, int32_t y, const char *s, uint16_t c, uint32_t 
                     row[px] = v >= 15u ? c : g_mix(row[px], c, v * 17u);
             }
         }
-        x += 8;
+        x += adv;
     }
     return x;
 }
+/* the cells 8 px apart; (XENOISE) g_text_a 7 where a label shares its box with more (the knobs' row, MST's cells) */
+static int32_t g_text(int32_t x, int32_t y, const char *s, uint16_t c, uint32_t mode) { return g_text_a(x, y, s, c, mode, 8); }
 static int32_t g_text_w(const char *s) { return (int32_t)str_len(s) * 8; }
 static void g_text_c(int32_t cx, int32_t y, const char *s, uint16_t c, uint32_t mode)   /* centred on cx */
 {

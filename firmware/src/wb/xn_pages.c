@@ -404,7 +404,7 @@ static void draw_gen(void)
     g_rect(0, TOP_H, 240, BODY_H, C_BG);
     gen_holo();
     if (!pg) {
-        knob_badge(226, TOP_H + 16, 0);
+        knob_badge(222, TOP_H + 16, 0);
         if (pilot_col == 0u) g_frame(0, TOP_H, 240, 46, C_TXT);
     }
     for (r = 0; r < 4u; r++) {
