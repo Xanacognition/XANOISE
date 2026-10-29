@@ -272,14 +272,14 @@ typedef struct { uint8_t eng[3]; const char *word[3]; uint8_t cut, glide; int8_t
 #define XVO ENGI_VOICE
 #define XLO ENGI_LOFI
 static const xs_patch_t XS_PATCH[WB_NSYN] = {
-    /* SUB BASS    */ {{XA, XLO, XA}, {"SUB BASS", "TRI BASS", "FAT BASS"}, 70, 0, {-4, 2, 4}},
-    /* FM PLUCK    */ {{XF6, XPH, XA}, {"FM BASS", "SYN BASS", "SQR BASS"}, 84, 0, {6, 0, 2}},
+    /* SUB BASS    */ {{XA, XLO, XA}, {"SUB BASS", "TRI BASS", "FAT BASS"}, 70, 0, {-1, 2, 4}},   /* (XENOISE: -4: the clean */
+    /* FM PLUCK    */ {{XF6, XPH, XA}, {"FM BASS", "SYN BASS", "SQR BASS"}, 84, 0, {6, 0, 2}},   /*  one, the standard bass) */
     /* DUB BASS    */ {{XA, XPH, XA}, {"FAT BASS", "FB BASS", "SQR BASS"}, 62, 0, {4, 0, 2}},
     /* TAPE EP     */ {{XF6, XPH, XWH}, {"TINE EP", "CZ PIANO", "SOFT KEYS"}, 92, 0, {-2, 0, -3}},
     /* DETUNE PAD  */ {{XA, XA, XLO}, {"JUNO PAD", "SOFT PAD", "FLOAT PAD"}, 78, 0, {-2, -3, 6}},
     /* WARM KEYS   */ {{XPH, XWH, XA}, {"CZ PIANO", "SOFT KEYS", "SINE KEY"}, 86, 0, {0, -3, 2}},
-    /* GLASS BELL  */ {{XF6, XA, XF6}, {"SOFT BELL", "GLASS KEYS", "ICE BELL"}, 88, 0, {5, 3, 5}},
-    /* MUSIC BOX   */ {{XF6, XPH, XLO}, {"MARIMBA", "HARP", "SOFT CHIP"}, 94, 0, {6, 2, 0}},
+    /* GLASS BELL  */ {{XF6, XA, XF6}, {"SOFT BELL", "GLASS KEYS", "ICE BELL"}, 88, 0, {0, -1, -1}},   /* (XENOISE: 5, 3, 5 */
+    /* MUSIC BOX   */ {{XF6, XPH, XLO}, {"MARIMBA", "HARP", "SOFT CHIP"}, 94, 0, {2, 0, -2}},     /* and 6, 2, 0: on top) */
     /* ORGAN       */ {{XWH, XWH, XWH}, {"JAZZ PERC", "DUB ORGAN", "SOFT KEYS"}, 100, 0, {-2, -3, -4}},
     /* BRASSY      */ {{XA, XPH, XF6}, {"BRASS", "BRASS", "BRASS"}, 80, 0, {-2, -5, 3}},
     /* SUPERSAW    */ {{XA, XA, XA}, {"SAW LEAD", "PWM STR", "STRINGS"}, 84, 0, {0, -3, -3}},
@@ -346,6 +346,8 @@ static void xs_synth(uint32_t wt, uint32_t jt, const int16_t *p)
     static uint16_t loaded[NTRK] = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF};
     const xs_patch_t *x = k == 1u && jt != XJ_BAS ? &XS_MEL_FMPLUCK : &XS_PATCH[k];
     uint32_t v = (xs_hash(song.name, sizeof song.name) >> (jt * 3u)) % 3u, i, id;
+    if (jt == XJ_BAS && (k == 0u || k == 5u))   /* (XENOISE) the standard bass: its clean one (SUB BASS's FAT and */
+        v = k == 0u ? 0u : 2u;                  /* TRI an octave down blew out; WARM KEYS: SINE KEY, round, not CZ's buzz) */
     for (i = 0; i < 3u && ((x->eng[v] == ENGI_FM6 && xj_fm6_elsewhere(jt)) ||   /* (FM6 once; the synth and the counter */
                            (jt != XJ_KEY && jt != XJ_BAS && xs_word[XJ_KEY] == x->word[v])); i++)   /* not KEY's sound) */
         v = (v + 1u) % 3u;

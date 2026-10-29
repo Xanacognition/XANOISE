@@ -75,7 +75,8 @@ static uint8_t page = PG_TRK, prev_page = PG_TRK, sub, cur_row, chd_slot, slot_s
 static uint8_t last_note[NT] = {0, 60, DN_SNR, 36, 60, 60};
 static uint8_t arm_f = 0xFF;                    /* the F button waiting for its second press (SNG) */
 static uint32_t arm_ms, toast_ms, frame_ms, dirty_ms, prog_ms, aud_off_ms, flash_ms[NT];
-static uint8_t dirty, prog_due, aud_off_t = 0xFF;
+static uint8_t dirty, prog_due, aud_off_t = 0xFF, genre_due;   /* (XENOISE) genre_due: SAV's ALGORITHM turned the genre */
+static uint32_t genre_ms;
 static char toast_s[32];
 static char knob_lab[4][16];
 static uint32_t prev_keys, punch_keys, pad_keys;
@@ -1676,7 +1677,15 @@ static void ui_input(void)
     if ((d = fm1_enc_take(ENC_ALGORITHM)) != 0) {   /* (XENOISE) the tracks, BRK .. SYN (no wrap); HOM: past SYN the visualizer */
         if (vis_on && vis_ar && page == PG_TRK) { if (vis_ar == 2u) vis_yaw = (uint16_t)((int32_t)vis_yaw + d * 0x400); }   /* (ALL RANGE: as PRESETS) */
         else if (fx_on()) fx_col = (uint8_t)clampi((int32_t)fx_col + d, 0, fx_row ? NT - 1 : NPUNCH - 1);   /* (PERFORM: along the row) */
-        else if (page == PG_MST || page == PG_SNG || (page == PG_GEN && sub < 2u)) {   /* (XENOISE) the knob (SELECT turns it) */
+        else if (page == PG_SNG) {              /* (XENOISE) SAV: the song's genre; at rest a moment, the song made again in it */
+            char gb[40];
+            uint32_t g0 = genre_pick < WB_NGENRE ? genre_pick : song.genre;
+            genre_pick = (uint8_t)(((int32_t)g0 + d % (int32_t)WB_NGENRE + (int32_t)WB_NGENRE) % (int32_t)WB_NGENRE);
+            genre_due = 1;
+            genre_ms = fm1_ms;
+            str_cat(str_cat(fmt_u(str_cat((gb[0] = 0, gb), "GENRE "), genre_pick + 1u, 2), " "), WB_GENRES[genre_pick].name);
+            toast(gb);
+        } else if (page == PG_MST || (page == PG_GEN && sub < 2u)) {   /* (XENOISE) the knob (SELECT turns it) */
             char lab[16], val[24];
             int32_t c = clampi((int32_t)pilot_col + d, 0, 3);
             while (c > 0 && c < 4 && !knob((uint32_t)c, 0, lab, val)) c += d > 0 ? 1 : -1;
@@ -2572,7 +2581,7 @@ static void draw_help(void)
 {
     static const char *const H[][7] = {
         {"HOM  THE TRACKER", "PRESETS  ROW", "ALGO  TRACK (PAST: VIS)", "SELECT  PATTERN", "HOME AGAIN  EDIT THE CELL", "HOLD ARP  NOTE REPEAT", "SEQ + OCT-  UNDO"},
-        {"SAV  THE STORE", "PRESETS  SLOT", "ALGO  KNOB, SELECT TURNS", "K1-K4 ASK: OCT+ YES, - NO", "SAVE AGAIN  PAGE 2, UNDO", "HOLD SAVE  GEN", "OCT+ x1 EMPTY  x4 GENERATE"},
+        {"SAV  THE STORE", "PRESETS  SLOT", "ALGO  THE SONG'S GENRE", "K1-K4 ASK: OCT+ YES, - NO", "SAVE AGAIN  PAGE 2, UNDO", "HOLD SAVE  GEN", "OCT+ x1 EMPTY  x4 GENERATE"},
         {"CHD  THE CHORDS", "PRESETS  CHORD SLOT", "ALGO  TRACK", "SELECT  PROGRESSION", "WHITE KEYS  CHORDS", "F1 WRITE  F2 NEW  F3 UNDO", ""},
         {"ENV  THE SOUND'S SHAPE", "PRESETS  ROW", "ALGO  TRACK", "K1-K4  ITS STAGES", "ENV AGAIN  PAGE 2", "F2  PLAY IT", ""},
         {"LFO  THE TRACK'S LFO", "ALGO  TRACK", "K1-K4  RATE WAVE DEPTHS", "LFO AGAIN  PAGE 2", "F4  BACK TO THE SOUND'S", "", ""},
@@ -2697,6 +2706,15 @@ static void app_step(void)
     if (sq_play && sq_pi != song.cur) { song.cur = sq_pi; if (cur_row >= plen()) cur_row = 0; }
     prog_pi = (uint8_t)(song.cur % NPAT);       /* (XENOISE: the chords shown, the pattern's: an A or a B part's) */
     for (t = 0; t < NT; t++) if (trig_ms[t]) { trig_ms[t] = 0; flash_ms[t] = fm1_ms; }
+    if (genre_due && fm1_ms - genre_ms > 900u) {   /* (XENOISE) SAV's ALGORITHM at rest: the song again, in that genre */
+        genre_due = 0;
+        if (genre_pick < WB_NGENRE && genre_pick != song.genre) {
+            uint8_t a0 = arm_f;
+            sng_fresh_empty = 0;
+            sng_do(SA_NEW);                     /* (as SAV's NEW SONG: UNDO when stopped, it plays on if it played) */
+            arm_f = a0;
+        }
+    }
     if (prog_due && fm1_ms - prog_ms > 900u) { prog_due = 0; if (prog_sel != song.prog || prog_sel == 0u) { prog_pick(prog_sel); touch(); } }
     if (aud_off_t != 0xFF && (int32_t)(fm1_ms - aud_off_ms) >= 0) { ev_push(EV_OFF, aud_off_t, 0, 0); aud_off_t = 0xFF; }
     if (arm_f != 0xFF && fm1_ms - arm_ms > ARM_MS) arm_f = 0xFF;

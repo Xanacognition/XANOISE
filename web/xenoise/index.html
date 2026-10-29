@@ -228,7 +228,7 @@ footer { border-top: 1px solid var(--seam); padding-block: 32px 0; display: grid
   <p>Every page works the same way, so once you know one, you know them all.</p>
   <div class="pilot">
     <div><strong>PRESETS</strong><p>The rows: the tracker's row, a save slot, a settings group, a genre, a part of the sequence.</p></div>
-    <div><strong>ALGORITHM</strong><p>The columns: the track. On pages without tracks (MST, SAV, GEN) it moves between knobs, and a frame marks the one it's on.</p></div>
+    <div><strong>ALGORITHM</strong><p>The columns: the track. On MST and GEN it moves between knobs, and a frame marks the one it's on. On SAV it picks the song's genre: stop turning and the song is made again in it (SEQ + OCT− undoes it while stopped).</p></div>
     <div><strong>SELECT</strong><p>Turns what's selected: the pattern, a slot's pattern, the knob ALGORITHM is on, an effect on or off.</p></div>
     <div><strong>K1–K4</strong><p>The page's four knobs, numbered on screen in their own colours. Press the page's button again for its next page.</p></div>
   </div>
@@ -250,7 +250,7 @@ footer { border-top: 1px solid var(--seam); padding-block: 32px 0; display: grid
       <dt>Hold ARP</dt><dd>Note repeat on or off</dd><dt>HOME+PLAY</dt><dd>SIT: the song plays itself, sections and small changes</dd>
       <dt>F (edit)</dt><dd>CLR · OFF · LEN · DUP</dd></dl></article>
     <article class="card"><header><span class="tag">SAV</span><h3>The store</h3></header><dl>
-      <dt>PRESETS</dt><dd>Slot 1–14</dd><dt>K1 · K2</dt><dd>Save · load</dd><dt>K3 · K4</dt><dd>Copy · paste a song</dd>
+      <dt>PRESETS</dt><dd>Slot 1–14</dd><dt>ALGORITHM</dt><dd>The song's genre: at rest, the song made again in it</dd><dt>K1 · K2</dt><dd>Save · load</dd><dt>K3 · K4</dt><dd>Copy · paste a song</dd>
       <dt>SAVE again</dt><dd>Page 2: K1 insert (the copy here, the rest move on) · K2 outsert (the slot out, the rest move back) · K3 new · K4 delete · F1 undo</dd>
       <dt>OCT+ ×1</dt><dd>A new empty song on the default kit</dd><dt>OCT+ ×4</dt><dd>Generate (asks)</dd><dt>OCT-</dt><dd>Delete the slot (OCT- again confirms)</dd></dl></article>
     <article class="card"><header><span class="tag">GEN</span><h3>The next song (hold SAVE)</h3></header><dl>

@@ -296,6 +296,15 @@ int main(void)
         check("SAVE: the SAV page", page == PG_SNG && sub == 0u);
         web_enc(EN_PRESET, 5 - (int32_t)slot_sel); run_ms(60);
         check("  PRESETS (the rows): slot 5", slot_sel == 5u);
+        {   /* (XENOISE) ALGORITHM on SAV: the song's genre; at rest, the song made again in it */
+            uint32_t g0 = wb_song.genre;
+            web_enc(EN_ALGO, 1); run_ms(300);
+            check("  ALGORITHM: the next genre picked (shown), the song not yet made again", genre_pick == (g0 + 1u) % WB_NGENRE && wb_song.genre == g0);
+            run_ms(1000);
+            check("  ... at rest: the song is that genre's, the page stays SAV", wb_song.genre == (g0 + 1u) % WB_NGENRE && page == PG_SNG);
+            web_enc(EN_ALGO, -1); run_ms(1300);
+            check("  ALGORITHM back: the genre it was", wb_song.genre == g0);
+        }
         web_enc(EN_K1, 1); run_ms(60);
         check("  K1: SAVE asked", arm_f == SA_SAVE);
         tap(B_OCTDN);
